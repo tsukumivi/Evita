@@ -45,9 +45,17 @@
 
 Evita is a local rebrand of [Serein](https://github.com/ViceVerse-cz/Serein), with its own name, application identifiers, and icon. Evita does not have a public release feed yet, so the upstream Serein installers and automatic updates are not used.
 
-### Windows build and install
+### Install on Windows
 
-The installer follows Serein's per-user NSIS flow. On Windows, install Rust 1.98.1 with the MSVC toolchain, Visual Studio C++ Build Tools, and NSIS, then run these commands from this repository:
+1. [Download the Evita Windows installer (.exe)](https://github.com/tsukumivi/Evita/raw/main/dist-installer/evita-0.1.0-setup.exe) (about 51 MB).
+2. Open `evita-0.1.0-setup.exe` from your Downloads folder and follow the setup prompts.
+3. Evita installs for your Windows user; administrator access is not required.
+
+The installer is not code-signed, so Windows may show a security warning.
+
+### Build from source
+
+To rebuild the installer, install Rust 1.98.1 with the MSVC toolchain, Visual Studio C++ Build Tools, and NSIS, then run this command from the repository:
 
 ```powershell
 cargo xtask package
