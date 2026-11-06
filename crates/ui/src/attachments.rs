@@ -256,26 +256,30 @@ pub fn pending_card(
 		Stroke::new(1.0, colors.border),
 		StrokeKind::Inside,
 	);
-	ui.scope_builder(
-		egui::UiBuilder::new().max_rect(pill.shrink(2.0)).layout(
-			egui::Layout::centered_and_justified(egui::Direction::LeftToRight),
-		),
-		|ui| {
-			ui.add_enabled_ui(removable, |ui| {
-				icons::button(
-					ui,
-					Icon::Trash,
-					32.0,
-					&crate::i18n::translate("attachments-pending-card-remove-attachment"),
-				)
-				.clicked()
-			})
-			.inner
-		},
-	)
-	.inner
-	.then_some(PendingCardAction::Remove)
-	.unwrap_or_default()
+	let remove_clicked = ui
+		.scope_builder(
+			egui::UiBuilder::new().max_rect(pill.shrink(2.0)).layout(
+				egui::Layout::centered_and_justified(egui::Direction::LeftToRight),
+			),
+			|ui| {
+				ui.add_enabled_ui(removable, |ui| {
+					icons::button(
+						ui,
+						Icon::Trash,
+						32.0,
+						&crate::i18n::translate("attachments-pending-card-remove-attachment"),
+					)
+					.clicked()
+				})
+				.inner
+			},
+		)
+		.inner;
+	if remove_clicked {
+		PendingCardAction::Remove
+	} else {
+		PendingCardAction::default()
+	}
 }
 
 /// Discord-style row for a received file without an inline preview.
@@ -1042,13 +1046,13 @@ pub fn pending_image_viewer(
 	if !*open {
 		return;
 	}
-	let zoom_id = egui::Id::new("pending-image-viewer-zoom");
+	let zoom_id = egui::Id::unique("pending-image-viewer-zoom");
 	let (mut zoom, mut pan) = ctx
 		.data(|data| data.get_temp::<(Zoom, egui::Vec2)>(zoom_id))
 		.unwrap_or((Zoom::At(Stop::Fit), egui::Vec2::ZERO));
 	let size = ctx.content_rect().size().max(egui::vec2(1.0, 1.0));
 	let mut close = false;
-	egui::Modal::new(egui::Id::new("pending-image-viewer"))
+	egui::Modal::new(egui::Id::unique("pending-image-viewer"))
 		.backdrop_color(Color32::from_black_alpha(236))
 		.frame(egui::Frame::NONE)
 		.show(ctx, |ui| {

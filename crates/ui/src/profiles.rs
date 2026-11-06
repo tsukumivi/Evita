@@ -2169,7 +2169,7 @@ pub(super) fn board_widgets_readonly(
 	let theme = Theme::new(&colors, None);
 	ui.label(design::eyebrow(
 		ui,
-		&crate::i18n::translate("profile-edit-widgets-heading"),
+		crate::i18n::translate("profile-edit-widgets-heading"),
 		colors.muted,
 	));
 	ui.add_space(4.0);

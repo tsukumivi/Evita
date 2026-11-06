@@ -514,7 +514,7 @@ fn form(
 		ui.label(
 			design::medium(
 				ui,
-				&crate::i18n::translate("profile-edit-form-profile-color"),
+				crate::i18n::translate("profile-edit-form-profile-color"),
 				15.0,
 			)
 			.color(colors.text_strong),
