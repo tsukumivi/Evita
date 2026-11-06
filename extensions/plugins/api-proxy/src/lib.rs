@@ -1,4 +1,4 @@
-use serein_extension_sdk::{ApiProxyConfig, ApiProxyOutput, Element, Invocation};
+use evita_extension_sdk::{ApiProxyConfig, ApiProxyOutput, Element, Invocation};
 
 fn panel(mode: &str, url: &str, notice: &str) -> Vec<Element> {
 	let mut elements = vec![
@@ -101,7 +101,7 @@ fn handle(input: Invocation) -> ApiProxyOutput {
 	output
 }
 
-serein_extension_sdk::export!(handle);
+evita_extension_sdk::export!(handle);
 
 #[cfg(test)]
 mod tests {
@@ -160,7 +160,7 @@ mod tests {
 				"{url}"
 			);
 			assert!(
-				serein_extension_sdk::serde_json::to_vec(&output)
+				evita_extension_sdk::serde_json::to_vec(&output)
 					.unwrap()
 					.len() < 8192
 			);

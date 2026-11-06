@@ -208,12 +208,12 @@ mod tests {
 			serde_json::to_vec(&activity).unwrap().len(),
 			MAX_CUSTOM_PRESENCE_BYTES
 		);
-		let sdk: serein_extension_sdk::CustomRichPresence =
+		let sdk: evita_extension_sdk::CustomRichPresence =
 			serde_json::from_value(serde_json::to_value(&activity).unwrap()).unwrap();
 		assert!(activity.validate().is_ok());
 		assert!(sdk.validate().is_ok());
 		activity.buttons[1].url.push('a');
-		let sdk: serein_extension_sdk::CustomRichPresence =
+		let sdk: evita_extension_sdk::CustomRichPresence =
 			serde_json::from_value(serde_json::to_value(&activity).unwrap()).unwrap();
 		assert!(matches!(activity.validate(), Err(crate::Error::Limit)));
 		assert!(sdk.validate().unwrap_err().contains("3 KiB"));
@@ -294,8 +294,8 @@ mod tests {
 		};
 		let sdk_presence =
 			serde_json::from_value(serde_json::to_value(presence()).unwrap()).unwrap();
-		let sdk = serein_extension_sdk::RichPresenceOutput {
-			rich_presence: Some(serein_extension_sdk::RichPresenceUpdate::Set {
+		let sdk = evita_extension_sdk::RichPresenceOutput {
+			rich_presence: Some(evita_extension_sdk::RichPresenceUpdate::Set {
 				presence: sdk_presence,
 			}),
 			..Default::default()

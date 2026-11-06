@@ -2,7 +2,7 @@
 //!
 //! Test handlers locally through the same JSON path as the Wasm exports:
 //! ```
-//! use serein_extension_sdk::{dispatch, Invocation, Output, serde_json};
+//! use evita_extension_sdk::{dispatch, Invocation, Output, serde_json};
 //! fn handle(input: Invocation) -> Output {
 //!     Output { replacement: input.composer.map(|text| text.to_uppercase()), ..Default::default() }
 //! }

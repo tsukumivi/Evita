@@ -26,7 +26,7 @@ This complete handler proposes opening General settings. Declare a `panel`
 action named `open-settings` and the `navigation` capability in its manifest.
 
 ```rust
-use serein_extension_sdk::{AppInvocation, AppOutput, AppView, HostEffect};
+use evita_extension_sdk::{AppInvocation, AppOutput, AppView, HostEffect};
 
 fn handle(input: AppInvocation) -> AppOutput {
     if input.app_event.is_some() || input.message_event.is_some() {
@@ -41,7 +41,7 @@ fn handle(input: AppInvocation) -> AppOutput {
     }
 }
 
-serein_extension_sdk::export!(handle);
+evita_extension_sdk::export!(handle);
 ```
 
 The Rust wrappers do **not** add JSON nesting. The SDK serializes that result as
@@ -786,7 +786,7 @@ available and sounds are currently enabled. It preserves the volume and every
 individual cue choice.
 
 ```rust
-use serein_extension_sdk::{
+use evita_extension_sdk::{
     AppInvocation, AppOutput, HostEffect, NotificationSettingsPatch,
 };
 
@@ -815,7 +815,7 @@ fn handle(input: AppInvocation) -> AppOutput {
     }
 }
 
-serein_extension_sdk::export!(handle);
+evita_extension_sdk::export!(handle);
 ```
 
 For the input above, the effect is:
@@ -1124,7 +1124,7 @@ evita-extension-sdk.workspace = true
 Put this complete handler in `src/lib.rs`:
 
 ```rust
-use serein_extension_sdk::{Element, Invocation, Output};
+use evita_extension_sdk::{Element, Invocation, Output};
 
 #[derive(Default, serde::Serialize, serde::Deserialize)]
 struct Settings {
@@ -1187,7 +1187,7 @@ fn handle(input: Invocation) -> Output {
     }
 }
 
-serein_extension_sdk::export!(handle);
+evita_extension_sdk::export!(handle);
 ```
 
 Open **Open plugin settings**, edit the controls, then click **Save preferences**.
