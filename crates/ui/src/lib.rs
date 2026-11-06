@@ -417,6 +417,8 @@ pub struct MessagingUi {
 	pub remove_attachment_index: Option<usize>,
 	/// Downscaled pixels per selected file (`None` for non-images), produced off the render thread.
 	pub attachment_previews: Vec<Option<std::sync::Arc<egui::ColorImage>>>,
+	/// Index of the staged image being inspected in the full-window local preview.
+	pending_image_preview: Option<usize>,
 	/// GPU copies of `attachment_previews`, keyed by the pixel buffer they were uploaded from.
 	attachment_textures: Vec<Option<(usize, egui::TextureHandle)>>,
 	pub attach_requested: bool,
@@ -4028,7 +4030,7 @@ impl MessagingUi {
 					for (index, (filename, bytes)) in files.iter().enumerate() {
 						ui.push_id(index, |ui| {
 							ui.vertical(|ui| {
-								if ui
+								match ui
 									.scope(|ui| {
 										attachments::pending_card(
 											ui,
@@ -4040,7 +4042,13 @@ impl MessagingUi {
 									})
 									.inner
 								{
-									self.remove_attachment_index = Some(index);
+									attachments::PendingCardAction::Remove => {
+										self.remove_attachment_index = Some(index);
+									}
+									attachments::PendingCardAction::Preview => {
+										self.pending_image_preview = Some(index);
+									}
+									attachments::PendingCardAction::None => {}
 								}
 								if *bytes > upload_limit
 									&& ui
@@ -4070,6 +4078,25 @@ impl MessagingUi {
 		ui.painter()
 			.hline(line, y, egui::Stroke::new(1.0, colors.border));
 		ui.add_space(6.0);
+	}
+	fn show_pending_image_preview(&mut self, ctx: &egui::Context) {
+		let Some(index) = self.pending_image_preview else {
+			return;
+		};
+		let Some((filename, _)) = self.selected_files().get(index).cloned() else {
+			self.pending_image_preview = None;
+			return;
+		};
+		let textures = self.attachment_textures(ctx);
+		let Some(texture) = textures.get(index).and_then(Option::as_ref).cloned() else {
+			self.pending_image_preview = None;
+			return;
+		};
+		let mut open = true;
+		attachments::pending_image_viewer(ctx, &texture, &filename, &mut open);
+		if !open {
+			self.pending_image_preview = None;
+		}
 	}
 	fn shows_title_bar(&self) -> bool {
 		if cfg!(target_os = "linux") {
@@ -5816,6 +5843,7 @@ impl MessagingUi {
 		// Clear the title bar and channel header so a notice never sits on the chrome.
 		self.toasts
 			.show(&ctx, if self.shows_title_bar() { 96.0 } else { 60.0 });
+		self.show_pending_image_preview(&ctx);
 		self.preload.person(self.profile.take_hovered());
 		let profile_guild = self.profile_guild(state);
 		self.preload.finish(

@@ -168,15 +168,22 @@ pub fn loading_card(ui: &mut egui::Ui) {
 	);
 }
 
-/// Card for a file that will be uploaded with the next message. Returns `true` when the user
-/// asks to remove it.
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+pub enum PendingCardAction {
+	#[default]
+	None,
+	Remove,
+	Preview,
+}
+
+/// Card for a file that will be uploaded with the next message.
 pub fn pending_card(
 	ui: &mut egui::Ui,
 	filename: &str,
 	bytes: u64,
 	preview: Option<&egui::TextureHandle>,
 	removable: bool,
-) -> bool {
+) -> PendingCardAction {
 	let colors = design::palette(ui);
 	let kind = file_kind(filename, None);
 	let (card, preview_rect) = pending_card_frame(ui);
@@ -193,6 +200,19 @@ pub fn pending_card(
 					.fit_to_exact_size(fitted.size())
 					.corner_radius(4),
 			);
+			let hit = ui
+				.interact(
+					preview_rect,
+					ui.auto_id_with("pending-image-preview"),
+					Sense::click(),
+				)
+				.on_hover_cursor(egui::CursorIcon::ZoomIn)
+				.on_hover_text(crate::i18n::translate(
+					"attachments-pending-card-preview-image",
+				));
+			if hit.clicked() {
+				return PendingCardAction::Preview;
+			}
 		}
 		None => {
 			icons::paint(
@@ -254,6 +274,8 @@ pub fn pending_card(
 		},
 	)
 	.inner
+	.then_some(PendingCardAction::Remove)
+	.unwrap_or_default()
 }
 
 /// Discord-style row for a received file without an inline preview.
@@ -1006,6 +1028,135 @@ impl Framing {
 			Zoom::At(Stop::Fit) => Zoom::Free(VIEWER_CLICK_ZOOM.min(self.ceiling)),
 			Zoom::At(Stop::Rest | Stop::Pixels) | Zoom::Free(_) => Zoom::At(Stop::Fit),
 		}
+	}
+}
+
+/// Full-window preview for a staged local image. It has no service attachment ID, URL or upload
+/// side effect; the image remains in the composer until the user sends or removes it.
+pub fn pending_image_viewer(
+	ctx: &egui::Context,
+	texture: &egui::TextureHandle,
+	filename: &str,
+	open: &mut bool,
+) {
+	if !*open {
+		return;
+	}
+	let zoom_id = egui::Id::new("pending-image-viewer-zoom");
+	let (mut zoom, mut pan) = ctx
+		.data(|data| data.get_temp::<(Zoom, egui::Vec2)>(zoom_id))
+		.unwrap_or((Zoom::At(Stop::Fit), egui::Vec2::ZERO));
+	let size = ctx.content_rect().size().max(egui::vec2(1.0, 1.0));
+	let mut close = false;
+	egui::Modal::new(egui::Id::new("pending-image-viewer"))
+		.backdrop_color(Color32::from_black_alpha(236))
+		.frame(egui::Frame::NONE)
+		.show(ctx, |ui| {
+			ui.set_min_size(size);
+			ui.set_max_size(size);
+			*ui.visuals_mut() = egui::Visuals::dark();
+			ui.visuals_mut().override_text_color = Some(Color32::WHITE);
+			let (full, backdrop) = ui.allocate_exact_size(size, Sense::click());
+			const TOP: f32 = 56.0;
+			let stage = Rect::from_min_max(
+				full.min + egui::vec2(24.0, TOP),
+				full.max - egui::vec2(24.0, 60.0),
+			)
+			.intersect(full);
+			let stage = if stage.is_positive() {
+				stage
+			} else {
+				Rect::from_center_size(full.center(), egui::vec2(1.0, 1.0))
+			};
+			let [width, height] = texture.size();
+			let framing = Framing::new(
+				stage.size(),
+				Some([width as u32, height as u32]),
+				true,
+				None,
+				Floor::Fit,
+				ctx.pixels_per_point(),
+			);
+			if let Some(pointer) = ui.input(|input| input.pointer.hover_pos())
+				&& stage.contains(pointer)
+			{
+				let factor = ui.input_mut(|input| {
+					let factor = (input.smooth_scroll_delta.y * 0.005).exp() * input.zoom_delta();
+					input.smooth_scroll_delta = egui::Vec2::ZERO;
+					factor
+				});
+				if factor != 1.0 {
+					let from = framing.scale(zoom);
+					zoom = framing.scroll(zoom, factor);
+					pan = anchor(pan, pointer - stage.center(), from, framing.scale(zoom));
+				}
+			}
+			let drawn = framing.size(zoom);
+			let limit = ((drawn - stage.size()) * 0.5).max(egui::Vec2::ZERO);
+			pan = pan.clamp(-limit, limit);
+			let image_rect = Rect::from_center_size(stage.center() + pan, drawn);
+			let mut image_ui = ui.new_child(egui::UiBuilder::new().max_rect(image_rect).layout(
+				egui::Layout::centered_and_justified(egui::Direction::TopDown),
+			));
+			image_ui.set_clip_rect(stage.intersect(image_ui.clip_rect()));
+			let response = image_ui
+				.add(egui::Image::new(texture).fit_to_exact_size(drawn))
+				.interact(Sense::click_and_drag())
+				.on_hover_cursor(if drawn.x > stage.width() || drawn.y > stage.height() {
+					egui::CursorIcon::Grab
+				} else {
+					egui::CursorIcon::ZoomIn
+				});
+			if response.dragged_by(egui::PointerButton::Primary) {
+				pan = (pan + response.drag_delta()).clamp(-limit, limit);
+			}
+			if response.double_clicked() {
+				zoom = Zoom::At(Stop::Fit);
+				pan = egui::Vec2::ZERO;
+			} else if response.clicked_by(egui::PointerButton::Primary) {
+				let from = framing.scale(zoom);
+				let next = framing.click(zoom);
+				if let Some(pointer) = response.interact_pointer_pos() {
+					pan = anchor(pan, pointer - stage.center(), from, framing.scale(next));
+				}
+				zoom = next;
+				let limit = ((framing.size(zoom) - stage.size()) * 0.5).max(egui::Vec2::ZERO);
+				pan = pan.clamp(-limit, limit);
+			}
+			let bar = Rect::from_min_size(full.min, egui::vec2(full.width(), TOP));
+			ui.painter().text(
+				egui::pos2(bar.left() + 20.0, bar.center().y),
+				egui::Align2::LEFT_CENTER,
+				filename,
+				egui::FontId::proportional(14.0),
+				Color32::WHITE,
+			);
+			ui.scope_builder(
+				egui::UiBuilder::new()
+					.max_rect(bar.shrink2(egui::vec2(12.0, 8.0)))
+					.layout(egui::Layout::right_to_left(egui::Align::Center)),
+				|ui| close = glass_button(ui, Icon::Close, 40.0, "Close").clicked(),
+			);
+			ui.painter().text(
+				full.center_bottom() - egui::vec2(0.0, 24.0),
+				egui::Align2::CENTER_CENTER,
+				crate::i18n::translate(
+					"attachments-viewer-scroll-to-zoom-drag-to-pan-double-click-to-reset",
+				),
+				egui::FontId::proportional(12.0),
+				Color32::from_gray(190),
+			);
+			if backdrop.clicked() {
+				close = true;
+			}
+		});
+	if ctx.input_mut(|input| input.consume_key(egui::Modifiers::NONE, egui::Key::Escape)) {
+		close = true;
+	}
+	ctx.data_mut(|data| data.insert_temp(zoom_id, (zoom, pan)));
+	if close {
+		*open = false;
+		ctx.data_mut(|data| data.remove::<(Zoom, egui::Vec2)>(zoom_id));
 	}
 }
 

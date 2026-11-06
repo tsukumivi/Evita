@@ -76,8 +76,8 @@ gpu-automatic-description = Let Evita choose the GPU that can draw this window.
 gpu-high-performance-description = Use the discrete graphics card when one is available.
 gpu-power-saving-description = Use integrated graphics to save battery.
 direct-messages = Direct Messages
-find-conversation = Find conversation
-find-conversation-tooltip = Search loaded conversations (Ctrl/Cmd+K)
+find-conversation = Find or start a conversation
+find-conversation-tooltip = Search loaded conversations or start a new one (Ctrl/Cmd+K)
 friends = Friends
 members = Members
 retry-shortcuts = Retry shortcuts
@@ -308,6 +308,7 @@ attachments-media-menu-unavailable-for-synthetic-attachments = Unavailable for s
 attachments-open-original-open-original = Open original…
 # Context: pending_card
 attachments-pending-card-remove-attachment = Remove attachment
+attachments-pending-card-preview-image = Preview image
 attachments-loading-card-preparing = Preparing…
 # Context: show_status
 attachments-show-status-cancel-download = Cancel download
@@ -2053,6 +2054,8 @@ profile-edit-form-use-default = Use default
 profile-edit-form-your-picture-will-be-removed-when-you-save = Your picture will be removed when you save.
 # Context: preview
 profile-edit-preview-about-me = About Me
+profile-edit-widgets-heading = Widgets · Board
+profile-edit-widgets-read-only = Board widgets are previewed here. Editing them is not supported yet.
 # Context: preview
 profile-edit-preview-change-profile-picture = Change profile picture
 # Context: preview
