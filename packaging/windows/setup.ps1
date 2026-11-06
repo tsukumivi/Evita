@@ -11,7 +11,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $appName = 'Evita'
 $publisher = 'Evita contributors'
-$website = 'https://github.com/ViceVerse-cz/Serein'
+$website = 'https://github.com/tsukumivi/Evita'
 $installDir = Join-Path $env:LOCALAPPDATA "Programs\$appName"
 $uninstallKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\$appName"
 $shortcut = Join-Path ([Environment]::GetFolderPath('Programs')) "$appName.lnk"

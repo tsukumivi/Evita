@@ -1,7 +1,7 @@
 # Evita
 
 <p align="center">
-  <a href="https://github.com/ViceVerse-cz/Serein">
+  <a href="https://github.com/tsukumivi/Evita">
     <img src="docs/preview.png" alt="Evita Native Discord Client" width="900" style="max-width: 100%; height: auto; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.3);" />
   </a>
 </p>
@@ -9,10 +9,6 @@
 <p align="center">
   <strong>A lightweight, native Discord desktop client written in Rust, powered by egui and wgpu.</strong>
 </p>
-
-<h3 align="center">
-  <a href="https://discord.gg/UqTDGCENaN">💬 Join our Discord server for updates</a>
-</h3>
 
 <p align="center">
   <a href="#downloads--installation"><strong>📦 Downloads</strong></a> &nbsp;•&nbsp;
@@ -25,8 +21,7 @@
 </p>
 
 <p align="center">
-  <a href="https://discord.gg/UqTDGCENaN"><img src="https://img.shields.io/badge/Discord-Join%20our%20Discord%20server%20for%20updates-5865F2?logo=discord&logoColor=white" alt="Discord" /></a>
-  <a href="https://github.com/ViceVerse-cz/Serein/releases"><img src="https://img.shields.io/github/v/release/ViceVerse-cz/Serein?label=release&color=blue" alt="GitHub Release" /></a>
+  <a href="https://github.com/tsukumivi/Evita/raw/main/dist-installer/evita-0.1.0-setup.exe"><img src="https://img.shields.io/badge/download-Windows%20installer-7c3aed.svg" alt="Download Evita for Windows" /></a>
   <a href="Cargo.toml"><img src="https://img.shields.io/badge/rust-1.98.1_pinned-blue.svg?logo=rust" alt="Rust 1.98.1 Pinned" /></a>
   <a href="crates/ui"><img src="https://img.shields.io/badge/ui-egui%20%2F%20wgpu-orange.svg" alt="UI egui/wgpu" /></a>
   <a href="docs/platform-support.md"><img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-informational.svg" alt="Platform Support" /></a>
@@ -43,7 +38,7 @@
 
 ## Downloads & Installation
 
-Evita is a local rebrand of [Serein](https://github.com/ViceVerse-cz/Serein), with its own name, application identifiers, and icon. Evita does not have a public release feed yet, so the upstream Serein installers and automatic updates are not used.
+Evita's Windows installer is available below. Automatic updates are not configured yet.
 
 ### Install on Windows
 
@@ -77,7 +72,7 @@ Evita also includes the 11 named palettes from [Yozora's Appearance picker](http
 
 ### Other platforms
 
-The upstream project provides installers for macOS and Linux. Evita's cross-platform packaging definitions have been rebranded, but Evita has not yet been built or published for those platforms. Do not use Serein release links for Evita.
+Only the Windows installer is currently available. macOS and Linux package definitions are present for future development, but Evita has not yet been built or published for those platforms.
 
 ---
 
@@ -253,7 +248,7 @@ For full details, review the [Storage Policy](docs/storage-policy.md) and [Threa
 - [Voice Architecture & Procedure](docs/voice.md)
 - [Design Tokens & UI Styling](docs/design.md)
 - [Extensions & Plugin Architecture](docs/extensions.md)
-- [Extension SDK Creator Wiki](https://github.com/ViceVerse-cz/Serein/wiki)
+- [Extension SDK Overview](docs/extension-sdk-overview.md)
 - [SDK Examples and Offline Authoring Guide](examples/extensions/README.md)
 - [Theme API Specification](docs/theme-api.md)
 - [Threat Model & Security](docs/threat-model.md)
@@ -263,11 +258,11 @@ For full details, review the [Storage Policy](docs/storage-policy.md) and [Threa
 
 ## License
 
-Evita is based on [Serein](https://github.com/ViceVerse-cz/Serein). The original Serein code and Evita's rebranding changes are dual-licensed under either:
+Evita is dual-licensed under either:
 - **MIT License** ([LICENSE-MIT](LICENSE-MIT))
 - **Apache License, Version 2.0** ([LICENSE-APACHE](LICENSE-APACHE))
 
-at your option. Third-party library notices, bundled font licenses (Inter, Noto Sans CJK/Arabic), and Twemoji graphics licenses are cataloged in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+at your option. Original copyright and attribution notices are retained in the license files and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Third-party library notices, bundled font licenses (Inter, Noto Sans CJK/Arabic), and Twemoji graphics licenses are cataloged there as well.
 
 Demo fixtures and simulated actions are excluded from normal app and CI packages.
 Build with `--features demo` and launch with `--demo` to enable them; `--demo-*`
