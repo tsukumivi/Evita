@@ -26,10 +26,11 @@ legal disclaimer applies. The license file is staged in both packages as
 One repository-drawn glyph, `thread.svg` (four slanted round-capped bars on the same 256-unit
 grid), marks threads; it is rasterized with the Phosphor set and carries no upstream license.
 
-- `atlas.png`: 512×896 RGBA, 26,267 bytes after lossless `oxipng -o max --strip all`.
-  SHA-256 `eb0553105dd745e67b1c1e2249cdf0f037c56ea2f1d7b5af45ebbf38f240a8f2`.
+- `atlas.png`: 512×896 RGBA, 117,625 bytes from the pinned `resvg` build (lossless `oxipng`
+  optimization is optional). SHA-256
+  `77326cb99e8a4d086a0d381d819d2e85cd87d24fea3d1a9ac7f0165d383dc647`.
 - `index.tsv`: icon name, tab, zero-based cell; SHA-256
-  `cc8a5f5cebe0bcb916e6a12c4dae58c6feabee0487b2ca3e8bb1a3f1c6f378de`.
+  `f3627f5ffeb6f41143c4feb690c46118b54324ab8f89ea3d5183be5cb8cf6875`.
 
 Every upstream SVG's SHA-256 is pinned in `tools/generate-icons.py`, which refuses to build
 from mismatching files. Regenerate from the repository root:

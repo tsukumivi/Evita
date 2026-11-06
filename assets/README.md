@@ -75,4 +75,4 @@ The 14 display-name faces total **3,493,132 bytes (3.33 MiB)**, asserted below 4
 
 ## Icons
 
-`icons/atlas.png` (38,534 bytes, 512×320 RGBA) bundles 37 [Phosphor Icons](https://github.com/phosphor-icons/core) 2.1.1 glyphs under the MIT license; see [icons/README.md](icons/README.md) for the pinned sources, hashes and the `resvg` regeneration command.
+`icons/atlas.png` (117,625 bytes, 512×896 RGBA) bundles 95 [Phosphor Icons](https://github.com/phosphor-icons/core) 2.1.1 glyphs, 10 CC0 Simple Icons marks, one repository thread glyph and the Evita mark; see [icons/README.md](icons/README.md) for pinned sources, hashes and the `resvg` regeneration command.
