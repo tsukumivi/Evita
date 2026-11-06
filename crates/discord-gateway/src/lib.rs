@@ -304,7 +304,7 @@ impl Diagnostics {
 			.scope
 			.len()
 			.saturating_add(label.len())
-			.saturating_add(11);
+			.saturating_add(10);
 		if self.remaining == 0 || bytes > self.bytes {
 			return;
 		}
@@ -3450,7 +3450,7 @@ mod member_tests {
 		short.record_to("\u{e9}", &mut output);
 		short.record_to("another line", &mut output);
 		assert_eq!(output, "[Evita members] \u{e9}\n".as_bytes());
-		assert_eq!((short.remaining, short.bytes), (63, 0));
+		assert_eq!((short.remaining, short.bytes), (63, 1));
 		static OVERSIZED: [u8; 8192] = [b'x'; 8192];
 		let mut oversized = Diagnostics::new("gateway", true);
 		oversized.record_to(std::str::from_utf8(&OVERSIZED).unwrap(), &mut output);
