@@ -1,0 +1,9 @@
+[Flatpak Ref]
+Name=cz.viceverse.evita
+Branch=master
+Title=Evita
+Comment=Fast, secure and lightweight native Discord client
+Icon=https://viceverse-cz.github.io/Evita/icons/evita.png
+Url=https://viceverse-cz.github.io/Evita/flatpak/repo
+RuntimeRepo=https://flathub.org/repo/flathub.flatpakrepo
+IsRuntime=false

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Evita
+Comment=Experimental unofficial native Discord client
+Exec=evita
+Icon=evita
+StartupWMClass=app.evita.client
+Terminal=false
+Categories=Network;InstantMessaging;

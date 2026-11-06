@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>CFBundleName</key><string>Evita</string>
+<key>CFBundleDisplayName</key><string>Evita</string>
+<key>CFBundleIdentifier</key><string>app.evita.client</string>
+<key>CFBundleExecutable</key><string>evita</string>
+<key>CFBundleIconFile</key><string>Evita.icns</string>
+<key>CFBundleIconName</key><string>Evita</string>
+<key>CFBundlePackageType</key><string>APPL</string>
+<key>CFBundleShortVersionString</key><string>0.1.0</string>
+<key>NSMicrophoneUsageDescription</key><string>Evita uses your microphone when you join a Discord server voice channel or start or answer a DM call.</string>
+<key>NSScreenCaptureUsageDescription</key><string>Evita uses screen recording permission to list and share the screen or window you select in a Discord call.</string>
+<key>NSCameraUsageDescription</key><string>Evita uses your camera only when you turn it on in a Discord call.</string>
+<key>NSHighResolutionCapable</key><true/>
+<key>NSPrincipalClass</key><string>NSApplication</string>
+</dict></plist>
