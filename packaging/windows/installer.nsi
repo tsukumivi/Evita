@@ -15,7 +15,7 @@ SetCompressor /SOLID lzma
 
 !define PRODUCT_NAME "Evita"
 !define PRODUCT_PUBLISHER "Evita contributors"
-!define PRODUCT_WEB_SITE "https://github.com/ViceVerse-cz/Serein"
+!define PRODUCT_WEB_SITE "https://github.com/tsukumivi/Evita"
 !define APP_EXE "evita.exe"
 !define APP_ID "app.evita.client"
 

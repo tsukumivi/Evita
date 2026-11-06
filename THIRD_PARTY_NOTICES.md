@@ -1,5 +1,9 @@
 # Third-party notices
 
+Evita is derived from the Serein project by ViceVerse-cz. The original source
+license and copyright notices are retained in `LICENSE-MIT` and `LICENSE-APACHE`;
+this attribution remains with the redistributed source.
+
 Discord Lottie sticker previews use **rasterlottie 0.2.2** (MIT OR Apache-2.0)
 with default features disabled. Evita uses the MIT option; its unmodified MIT
 license is retained in `assets/licenses/files/rasterlottie-0.2.2-LICENSE-MIT`.
