@@ -4803,6 +4803,7 @@ mod tests {
 		for shape in &output.shapes {
 			text(&shape.shape, &mut labels);
 		}
+		output.drop_without_applying_deltas();
 		assert!(tab == FullTab::Board);
 		assert!(!labels.contains(&crate::i18n::translate("profiles-show-mutual-friends")));
 		assert!(!labels.contains(&crate::i18n::translate("profiles-show-mutual-servers")));
