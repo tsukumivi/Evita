@@ -1893,6 +1893,7 @@ mod tests {
 			uploading: None,
 			last: None,
 			notice: None,
+			failed_sends: VecDeque::new(),
 		};
 		uploads.poll(2, Some(Id(2)), true, &context);
 		assert!(cancelled.load(Ordering::Acquire));
