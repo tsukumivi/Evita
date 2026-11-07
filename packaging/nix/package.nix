@@ -97,7 +97,10 @@ in
         version = (lib.importTOML ../../Cargo.toml).workspace.package.version;
 
         # Keep bundled symbols local so each copy stays consistent.
-        env.RUSTFLAGS = lib.optionalString isLinux "-C link-arg=-Wl,--exclude-libs,ALL";
+        env = {
+            EVITA_RELEASES_URL = "https://api.github.com/repos/tsukumivi/Evita/releases";
+            RUSTFLAGS = lib.optionalString isLinux "-C link-arg=-Wl,--exclude-libs,ALL";
+        };
 
         src = ../../.;
 
@@ -199,7 +202,7 @@ in
 
         meta = {
             description = "Tiny, performant, native Discord client written in Rust (egui/wgpu)";
-            homepage = "https://github.com/ViceVerse-cz/Serein";
+            homepage = "https://github.com/tsukumivi/Evita";
             license = with lib.licenses; [
                 mit
                 asl20

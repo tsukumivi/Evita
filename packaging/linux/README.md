@@ -7,7 +7,7 @@ The [AppImage](../appimage/README.md) supports in-app updates on Linux x86_64 wi
 the documented host GTK4/WebKit6 runtime; its release build targets Ubuntu 24.04
 for glibc 2.39 compatibility.
 Download the file labelled for your distribution from
-[Releases](https://github.com/ViceVerse-cz/Serein/releases), then use its actual filename:
+[Evita Releases](https://github.com/tsukumivi/Evita/releases), then use its actual filename:
 
 ```sh
 sudo apt install ./evita-*.deb                     # Ubuntu 26.04
@@ -96,7 +96,7 @@ builds and package inspection do not prove desktop login, graphics or physical a
 ## Debian / Ubuntu details
 
 On a Debian/Ubuntu Linux build host, `cargo xtask package` produces the standard
-`dist/serein_<version>-1_<architecture>.deb` including voice. Native `amd64` and `arm64`
+`dist/evita_<version>-1_<architecture>.deb` including voice. Native `amd64` and `arm64`
 ELF headers are accepted; a build does not prove desktop or audio support on that
 architecture. These are unsigned host-distribution packages, not portable Linux
 archives or a promise of compatibility with older distributions.
