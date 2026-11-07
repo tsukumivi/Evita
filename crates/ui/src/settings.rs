@@ -213,6 +213,20 @@ fn gpu_description(language: Language, preference: model::GpuPreference) -> Stri
 	})
 }
 
+fn quest_text(ui: &mut egui::Ui, quest: &model::Quest, colors: design::Palette) {
+	ui.vertical(|ui| {
+		ui.spacing_mut().item_spacing.y = 4.0;
+		if !quest.description.is_empty() {
+			ui.add(egui::Label::new(&quest.description).wrap());
+		}
+		ui.label(
+			RichText::new(&quest.progress)
+				.size(12.0)
+				.color(colors.muted),
+		);
+	});
+}
+
 impl MessagingUi {
 	pub(super) fn open_extension_settings(&mut self, view: extensions::AppView) {
 		self.settings.page = match view {
@@ -498,7 +512,7 @@ impl MessagingUi {
 										self.notification_settings(ui, state.demo)
 									}
 									Page::Activity => self.activity_settings(ui, state),
-									Page::Quests => self.quests_settings(ui),
+									Page::Quests => self.quests_settings(ui, state, commands),
 									Page::Voice => self.voice_settings_content(
 										ui,
 										state.demo,
@@ -1337,37 +1351,76 @@ impl MessagingUi {
 		self.registered_games_settings(ui, state.demo);
 	}
 
-	fn quests_settings(&mut self, ui: &mut egui::Ui) {
-		design::group(
-			ui,
-			&crate::i18n::translate("settings-quests-page-quest-home"),
-			|ui| {
-				design::row(
-					ui,
-					"settings-quests-open-discord-quest-home",
-					Some("settings-quests-availability-and-rewards-are-managed-in-discord"),
-					|ui| {
-						if design::button(
-							ui,
-							"settings-quests-open-discord",
-							design::ButtonKind::Outline,
-						)
-						.clicked()
-						{
-							ui.ctx()
-								.open_url(egui::OpenUrl::new_tab("https://discord.com/app"));
-						}
-					},
-				);
-				design::card_divider(ui);
-				design::hint(
-					ui,
-					&crate::i18n::translate(
-						"settings-quests-open-discord-and-choose-discover-then-quests",
-					),
-				);
-			},
-		);
+	fn quests_settings(
+		&mut self,
+		ui: &mut egui::Ui,
+		state: &mut State,
+		commands: &mut Vec<client_core::Command>,
+	) {
+		if !state.demo
+			&& state.auth == client_core::auth::AuthState::Authenticated
+			&& let Some(command) = state.quests.request(false)
+		{
+			commands.push(command);
+		}
+		let colors = design::palette(ui);
+		ui.horizontal(|ui| {
+			ui.heading(crate::i18n::translate("settings-quests-page-quest-home"));
+			ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+				if ui
+					.add_enabled_ui(!state.demo && !state.quests.loading, |ui| {
+						design::button(ui, "Refresh", design::ButtonKind::Outline)
+					})
+					.inner
+					.clicked() && let Some(command) = state.quests.request(true)
+				{
+					commands.push(command);
+				}
+			});
+		});
+		ui.add_space(12.0);
+		if state.quests.loading {
+			ui.horizontal(|ui| {
+				ui.add(egui::Spinner::new());
+				ui.label("Loading quests from Discord…");
+			});
+		} else if let Some(error) = state.quests.error {
+			design::notice(ui, design::Level::Error, error.label());
+			if !state.demo
+				&& design::button(ui, "Try again", design::ButtonKind::Outline).clicked()
+				&& let Some(command) = state.quests.request(true)
+			{
+				commands.push(command);
+			}
+		} else if state.quests.loaded && state.quests.items.is_empty() {
+			design::group(ui, "No active quests", |ui| {
+				design::hint(ui, "Your account has no quests available right now.");
+			});
+		} else {
+			for quest in &state.quests.items {
+				design::group(ui, &quest.title, |ui| {
+					if let Some(url) = &quest.image {
+						let media = model::EmbedMedia {
+							url: Some(url.clone()),
+							..Default::default()
+						};
+						ui.horizontal(|ui| {
+							self.avatars.show_media(
+								ui,
+								&media,
+								egui::vec2(88.0, 64.0),
+								state.demo,
+								crate::avatars::Surface::Inline,
+							);
+							quest_text(ui, quest, colors);
+						});
+					} else {
+						quest_text(ui, quest, colors);
+					}
+				});
+				ui.add_space(8.0);
+			}
+		}
 	}
 
 	fn storage_page(&mut self, ui: &mut egui::Ui, state: &State) {

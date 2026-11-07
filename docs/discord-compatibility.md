@@ -1,5 +1,14 @@
 # Discord compatibility — checked 2026-09-10
 
+## Quest Home — November 8, 2026
+
+Quest Home reads `GET /quests/@me` through the authenticated account session, with a 256 KiB
+response limit, at most 100 cards, bounded text, and images limited to Discord's CDN hosts. The
+route is an undocumented internal endpoint and is **unofficial**; its availability and response
+shape may change or be restricted. Evita loads it only when Quest Home is opened and provides an
+explicit refresh/retry. Parsing fixtures verify the current expected shape and bounds; they do not
+establish live compatibility or quest eligibility.
+
 ## Game mentions (October 14, 2026)
 
 The native composer offers `@game`, a searchable game catalog and application references

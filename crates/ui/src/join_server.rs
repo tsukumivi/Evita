@@ -41,6 +41,30 @@ fn invite_input(ui: &mut egui::Ui, text: &mut String, focus: bool) -> egui::Resp
 	response
 }
 
+fn guild_created_estimate(guild: Id) -> Option<String> {
+	const MONTHS: [&str; 12] = [
+		"January",
+		"February",
+		"March",
+		"April",
+		"May",
+		"June",
+		"July",
+		"August",
+		"September",
+		"October",
+		"November",
+		"December",
+	];
+	let seconds = ((guild.0 >> 22) / 1000) as i64 + 1_420_070_400;
+	let created = time::OffsetDateTime::from_unix_timestamp(seconds).ok()?;
+	Some(format!(
+		"Est. {} {}",
+		MONTHS[created.month() as usize - 1],
+		created.year()
+	))
+}
+
 fn option_row(ui: &mut egui::Ui, icon: icons::Icon, label: &str) -> egui::Response {
 	let label = crate::i18n::translate_if_key(label);
 	let colors = design::palette(ui);
@@ -220,23 +244,22 @@ impl JoinDialog {
 		))
 		.width(460.0)
 		.show(ctx, |d| {
-			let (ready, member, loading, accepted, parsed) =
+			let (ready, member, loading, accepted, parsed, join_clicked) =
 				d.scroll(260.0, |ui| self.body(ui, state, avatars));
 			d.footer(|ui| {
 				let busy = loading || state.invite_join.pending;
-				let enabled = !state.demo && !busy && !member && !accepted;
-				let text = if busy {
-					"Please wait…"
-				} else if ready {
-					"Join Server"
-				} else {
-					"Check Invite"
-				};
-				ui.add_enabled_ui(enabled, |ui| {
-					if dialog::action(ui, text, dialog::Action::Primary).clicked() {
-						self.submit(state, parsed.clone(), ready, commands);
-					}
-				});
+				if !ready {
+					let text = if busy {
+						"Please wait…"
+					} else {
+						"Check Invite"
+					};
+					ui.add_enabled_ui(!state.demo && !busy && !member && !accepted, |ui| {
+						if dialog::action(ui, text, dialog::Action::Primary).clicked() {
+							self.submit(state, parsed.clone(), false, commands);
+						}
+					});
+				}
 				if dialog::action(
 					ui,
 					if self.picker {
@@ -255,7 +278,13 @@ impl JoinDialog {
 					}
 				}
 			});
+			(join_clicked, parsed)
 		});
+		if response.inner.0
+			&& let Some(code) = response.inner.1.clone()
+		{
+			self.submit(state, Some(code), true, commands);
+		}
 		// Like Discord, a successful join lands in the server; the dialog has done its job.
 		let joined = matches!(state.invite_join.result, Some(Ok(target))
 		if match target {
@@ -546,7 +575,7 @@ impl JoinDialog {
 		ui: &mut egui::Ui,
 		state: &State,
 		avatars: &mut crate::avatars::Avatars,
-	) -> (bool, bool, bool, bool, Option<String>) {
+	) -> (bool, bool, bool, bool, Option<String>, bool) {
 		let colors = design::palette(ui);
 		let label = ui.label(design::eyebrow(
 			ui,
@@ -603,6 +632,7 @@ impl JoinDialog {
 			.then_some(state.invite_join.result.as_ref())
 			.flatten()
 			.and_then(|result| result.as_ref().err());
+		let mut card_join_clicked = false;
 		if loading || preview.is_some() {
 			ui.add_space(16.0);
 			egui::Frame::new()
@@ -611,114 +641,191 @@ impl JoinDialog {
 				.inner_margin(14)
 				.show(ui, |ui| {
 					ui.set_width(ui.available_width());
-					ui.horizontal(|ui| {
-						ui.spacing_mut().item_spacing.x = 14.0;
-						let (icon, _) =
-							ui.allocate_exact_size(egui::Vec2::splat(52.0), egui::Sense::hover());
-						match preview.and_then(|p| p.embed.thumbnail.as_ref()) {
-							Some(media) => {
-								let mut icon_ui =
-									ui.new_child(egui::UiBuilder::new().max_rect(icon));
-								avatars.show_media(
-									&mut icon_ui,
-									media,
-									icon.size(),
-									state.demo,
-									crate::avatars::Surface::Inline,
-								);
-							}
-							None => {
-								ui.painter().rect_filled(icon, 16, colors.raised);
-								let initial = preview
-									.and_then(|p| p.embed.title.as_deref())
-									.and_then(|title| title.chars().next())
-									.map(|c| c.to_uppercase().to_string());
-								ui.painter().text(
-									icon.center(),
-									egui::Align2::CENTER_CENTER,
-									initial.as_deref().unwrap_or("?"),
-									egui::FontId::proportional(20.0),
-									colors.muted,
-								);
-							}
+					let (banner, _) = ui.allocate_exact_size(
+						egui::vec2(ui.available_width(), 100.0),
+						egui::Sense::hover(),
+					);
+					if let Some(media) = preview.and_then(|p| p.embed.image.as_ref()) {
+						let mut banner_ui = ui.new_child(egui::UiBuilder::new().max_rect(banner));
+						avatars.show_media(
+							&mut banner_ui,
+							media,
+							banner.size(),
+							state.demo,
+							crate::avatars::Surface::Inline,
+						);
+					} else {
+						ui.painter().rect_filled(banner, 0, colors.selected);
+					}
+					let icon = egui::Rect::from_min_size(
+						banner.left_bottom() + egui::vec2(16.0, -32.0),
+						egui::vec2(64.0, 64.0),
+					);
+					if let Some(media) = preview.and_then(|p| p.embed.thumbnail.as_ref()) {
+						let mut icon_ui = ui.new_child(egui::UiBuilder::new().max_rect(icon));
+						avatars.show_media(
+							&mut icon_ui,
+							media,
+							icon.size(),
+							state.demo,
+							crate::avatars::Surface::Inline,
+						);
+					} else {
+						ui.painter().rect_filled(icon, 14, colors.raised);
+						let initial = preview
+							.and_then(|p| p.embed.title.as_deref())
+							.and_then(|title| title.chars().next())
+							.map(|c| c.to_uppercase().to_string());
+						ui.painter().text(
+							icon.center(),
+							egui::Align2::CENTER_CENTER,
+							initial.as_deref().unwrap_or("?"),
+							egui::FontId::proportional(22.0),
+							colors.text_strong,
+						);
+					}
+					ui.painter().rect_stroke(
+						icon,
+						14,
+						egui::Stroke::new(4.0, colors.base),
+						egui::StrokeKind::Inside,
+					);
+					ui.add_space(36.0);
+					ui.vertical(|ui| {
+						ui.spacing_mut().item_spacing.y = 6.0;
+						ui.add(
+							egui::Label::new(
+								design::semibold(
+									ui,
+									preview.and_then(|p| p.embed.title.clone()).unwrap_or_else(
+										|| {
+											crate::i18n::translate(
+												"join-server-body-checking-invite",
+											)
+										},
+									),
+									17.0,
+								)
+								.color(colors.text_strong),
+							)
+							.truncate(),
+						);
+						let verified = preview.is_some_and(|preview| preview.verified);
+						let community = preview.is_some_and(|preview| preview.community);
+						if verified || community {
+							ui.horizontal(|ui| {
+								for label in [
+									verified.then_some("Verified"),
+									community.then_some("Community"),
+								]
+								.into_iter()
+								.flatten()
+								{
+									egui::Frame::new()
+										.fill(colors.selected)
+										.corner_radius(10)
+										.inner_margin(egui::Margin::symmetric(8, 3))
+										.show(ui, |ui| {
+											ui.label(
+												egui::RichText::new(label)
+													.size(11.0)
+													.strong()
+													.color(colors.text_strong),
+											);
+										});
+								}
+								if let Some(clan) =
+									preview.and_then(|preview| preview.clan.as_ref())
+								{
+									egui::Frame::new()
+										.fill(colors.raised)
+										.corner_radius(10)
+										.inner_margin(egui::Margin::symmetric(8, 3))
+										.show(ui, |ui| {
+											ui.horizontal(|ui| {
+												if clan.badge.is_some() {
+													avatars.show_icon(
+														ui,
+														clan.badge_key(),
+														12.0,
+														state.demo,
+														"Server tag badge",
+													);
+												}
+												ui.label(
+													egui::RichText::new(&clan.tag)
+														.size(11.0)
+														.strong(),
+												);
+											});
+										});
+								}
+							});
 						}
-						ui.vertical(|ui| {
-							ui.spacing_mut().item_spacing.y = 4.0;
+						if let Some((online, members)) = preview
+							.and_then(|p| p.embed.description.as_deref())
+							.and_then(crate::invites::counts)
+						{
+							ui.horizontal(|ui| {
+								ui.spacing_mut().item_spacing.x = 6.0;
+								crate::invites::dot_stat(
+									ui,
+									colors.positive,
+									online,
+									"server-settings-preview-online",
+								);
+								ui.add_space(6.0);
+								crate::invites::dot_stat(
+									ui,
+									colors.muted,
+									members,
+									"server-settings-preview-members",
+								);
+							});
+						}
+						if let Some(created) = preview
+							.and_then(|p| p.guild)
+							.and_then(guild_created_estimate)
+						{
+							ui.label(egui::RichText::new(created).size(12.0).color(colors.muted));
+						}
+						if let Some(description) =
+							preview.and_then(|p| p.guild_description.as_deref())
+						{
+							let description: String = description.chars().take(150).collect();
 							ui.add(
 								egui::Label::new(
-									design::semibold(
-										ui,
-										preview.and_then(|p| p.embed.title.clone()).unwrap_or_else(
-											|| {
-												crate::i18n::translate(
-													"join-server-body-checking-invite",
-												)
-											},
-										),
-										17.0,
-									)
-									.color(colors.text_strong),
-								)
-								.truncate(),
-							);
-							match preview
-								.and_then(|p| p.embed.description.as_deref())
-								.and_then(crate::invites::counts)
-							{
-								Some((online, members)) => {
-									ui.horizontal(|ui| {
-										ui.spacing_mut().item_spacing.x = 6.0;
-										crate::invites::dot_stat(
-											ui,
-											colors.positive,
-											online,
-											"server-settings-preview-online",
-										);
-										ui.add_space(6.0);
-										crate::invites::dot_stat(
-											ui,
-											colors.muted,
-											members,
-											"server-settings-preview-members",
-										);
-									});
-								}
-								None => {
-									ui.add(
-										egui::Label::new(
-											egui::RichText::new(crate::i18n::translate_if_key(
-												if member {
-													"join-server-body-you-are-already-a-member"
-												} else if loading {
-													"join-server-body-fetching-server-details"
-												} else {
-													"join-server-body-review-this-server-then-choose-join-server"
-												},
-											))
-											.size(13.0)
-											.color(colors.muted),
-										)
-										.truncate(),
-									);
-								}
-							}
-							if preview.is_some() {
-								ui.add(
-									egui::Label::new(
-										egui::RichText::new(crate::i18n::translate_if_key(
-											if member {
-												"join-server-body-you-are-already-a-member-of-this-server"
-											} else {
-												"join-server-body-choose-join-server-to-confirm"
-											},
-										))
-										.size(12.0)
+									egui::RichText::new(description)
+										.size(13.0)
 										.color(colors.muted),
-									)
-									.wrap(),
-								);
-							}
-						});
+								)
+								.wrap(),
+							);
+						} else if loading {
+							ui.label(
+								egui::RichText::new("Fetching server details…")
+									.size(13.0)
+									.color(colors.muted),
+							);
+						} else if member {
+							ui.label("You are already a member of this server.");
+						}
+						ui.add_space(8.0);
+						let label = if member || accepted { "Joined" } else { "Join" };
+						let enabled = ready
+							&& !state.demo && !loading
+							&& !member && !accepted
+							&& !state.invite_join.pending;
+						let button = egui::Button::new(
+							egui::RichText::new(label)
+								.strong()
+								.color(egui::Color32::WHITE),
+						)
+						.fill(colors.positive)
+						.stroke(egui::Stroke::NONE)
+						.corner_radius(8)
+						.min_size(egui::vec2(ui.available_width(), 40.0));
+						card_join_clicked = ui.add_enabled(enabled, button).clicked();
 					});
 				});
 		}
@@ -776,7 +883,7 @@ impl JoinDialog {
 					"https://discord.com/servers",
 				);
 			});
-		(ready, member, loading, accepted, parsed)
+		(ready, member, loading, accepted, parsed, card_join_clicked)
 	}
 
 	/// Look the invite up, or join once a preview is on screen; never both in one click.
@@ -999,20 +1106,14 @@ mod tests {
 						title: Some("Synthetic server".into()),
 						..Default::default()
 					},
+					..Default::default()
 				}),
 			);
 			for _ in 0..2 {
 				frame(&ctx, &mut dialog, &mut state, &mut commands, size, vec![]);
 			}
 			assert!(commands.is_empty(), "preview never joins automatically");
-			click(
-				&ctx,
-				&mut dialog,
-				&mut state,
-				&mut commands,
-				size,
-				"Join Server",
-			);
+			click(&ctx, &mut dialog, &mut state, &mut commands, size, "Join");
 			let Some(Command::JoinInvite { request, .. }) = commands.pop() else {
 				panic!("join missing")
 			};

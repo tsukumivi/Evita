@@ -4340,6 +4340,11 @@ impl Desktop {
 					request,
 					result: Ok(self.state.gifs.favorites.clone()),
 				},
+				// The offline fixture has no authenticated Discord quests.
+				Command::Quests { request } => Event::Quests {
+					request,
+					result: Ok(Vec::new()),
+				},
 				Command::CreateGuild { sequence, .. } => Event::GuildCreated {
 					sequence,
 					result: Err(Failure::ProtocolAt("Server creation unavailable offline")),
@@ -6765,13 +6770,13 @@ impl eframe::App for Desktop {
 				{
 					Err("Sign in before changing your profile picture")
 				} else {
-					self.profile_avatar.start(
+					self.profile_avatar.start_profile(
 						scope,
 						self.runtime.handle(),
 						&ctx,
 						self.window.clone(),
 						"Choose profile picture",
-						256,
+						512,
 					)
 				};
 				if let Err(error) = result {

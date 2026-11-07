@@ -21,7 +21,20 @@ fn video_pixels(rgba: &[u8]) -> &[egui::Color32] {
 const CORNER: u8 = 8;
 const MAX_WIDTH: f32 = crate::avatars::media::MEDIA_MAX_WIDTH;
 const MAX_HEIGHT: f32 = crate::avatars::media::MEDIA_MAX_HEIGHT;
+/// Match the platform decoder's bounded UHD frame allowance.
+const MAX_DECODE_EDGE: usize = 3840;
+const MAX_DECODE_PIXELS: usize = 3840 * 2160;
 const BAR_HEIGHT: f32 = 60.0;
+
+fn valid_rgba_frame(width: usize, height: usize, rgba_len: usize) -> bool {
+	width > 0
+		&& height > 0
+		&& width <= MAX_DECODE_EDGE
+		&& height <= MAX_DECODE_EDGE
+		&& width.checked_mul(height).is_some_and(|pixels| {
+			pixels <= MAX_DECODE_PIXELS && pixels.checked_mul(4) == Some(rgba_len)
+		})
+}
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum VideoState {
@@ -173,14 +186,7 @@ impl VideoUi {
 		height: usize,
 		rgba: &[u8],
 	) -> bool {
-		if self.active.is_none()
-			|| width == 0
-			|| height == 0
-			|| width > 1920
-			|| height > 1920
-			|| width * height > 1920 * 1080
-			|| rgba.len() != width * height * 4
-		{
+		if self.active.is_none() || !valid_rgba_frame(width, height, rgba.len()) {
 			return false;
 		}
 		let frame = self.frame.get_or_insert_with(|| {
@@ -267,13 +273,7 @@ impl VideoUi {
 		height: usize,
 		rgba: &[u8],
 	) -> bool {
-		if width == 0
-			|| height == 0
-			|| width > 1920
-			|| height > 1920
-			|| width * height > 1920 * 1080
-			|| rgba.len() != width * height * 4
-		{
+		if !valid_rgba_frame(width, height, rgba.len()) {
 			return false;
 		}
 		let bytes = rgba.len();
@@ -873,6 +873,17 @@ fn timestamp(seconds: f64) -> String {
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[test]
+	fn rgba_frame_budget_accepts_4k_and_rejects_oversized_or_malformed_frames() {
+		assert!(valid_rgba_frame(2560, 1440, 2560 * 1440 * 4));
+		assert!(valid_rgba_frame(3840, 2160, 3840 * 2160 * 4));
+		assert!(!valid_rgba_frame(3841, 1080, 0));
+		assert!(!valid_rgba_frame(3840, 3840, 3840 * 3840 * 4));
+		assert!(!valid_rgba_frame(usize::MAX, usize::MAX, 0));
+		assert!(!valid_rgba_frame(2, 2, 15));
+	}
+
 	#[test]
 	fn video_controls_are_explicit_bounded_and_keyboard_operable() {
 		let mut message = test_support::message(1, Id(2));
@@ -955,8 +966,8 @@ mod tests {
 				matches!(video.command.take(), Some(VideoCommand::Play(file)) if file == attachment)
 			);
 			assert!(video.seen);
-			assert!(!video.accept_frame(&ctx, 1921, 1080, &[]));
-			assert!(!video.accept_frame(&ctx, 1, 1921, &[]));
+			assert!(!video.accept_frame(&ctx, 3841, 1080, &[]));
+			assert!(!video.accept_frame(&ctx, 1, 3841, &[]));
 			assert!(!video.accept_frame(&ctx, 1920, 1920, &[]));
 			assert!(!video.accept_frame(&ctx, usize::MAX, usize::MAX, &[]));
 			assert!(!video.accept_frame(&ctx, 1, 1, &[0]));
@@ -1054,7 +1065,7 @@ mod tests {
 		assert_eq!(video.poster_queue.len(), 1);
 		// Bounds match the playback path; failures never cache a texture.
 		assert!(!video.accept_poster(&ctx, Id(3), 0, 1, &[]));
-		assert!(!video.accept_poster(&ctx, Id(3), 1921, 1, &[]));
+		assert!(!video.accept_poster(&ctx, Id(3), 3841, 1, &[]));
 		assert!(!video.accept_poster(&ctx, Id(3), 1, 1, &[0]));
 		assert!(video.posters.is_empty());
 		video.poster_failed(Id(9));

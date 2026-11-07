@@ -28,6 +28,59 @@ pub(crate) struct Layout {
 	demo: bool,
 }
 
+/// Keep Discord's wire Markdown visible while styling the text between matched delimiters.
+/// The editor still lays out the original slices, so cursor, copy, and submit offsets stay raw.
+fn markdown_pair(text: &str) -> Option<(&'static str, usize)> {
+	for marker in ["***", "**", "__", "~~", "*", "`"] {
+		let Some(rest) = text.strip_prefix(marker) else {
+			continue;
+		};
+		let Some(end) = rest.find(marker) else {
+			continue;
+		};
+		if end == 0 || (marker == "`" && rest[..end].contains('\n')) {
+			continue;
+		}
+		return Some((marker, marker.len() + end + marker.len()));
+	}
+	None
+}
+
+fn append_markdown(
+	ui: &egui::Ui,
+	job: &mut LayoutJob,
+	text: &str,
+	font: &egui::FontId,
+	colors: crate::design::Palette,
+) {
+	let Some((marker, length)) = markdown_pair(text) else {
+		job.append(text, 0.0, TextFormat::simple(font.clone(), colors.text));
+		return;
+	};
+	let inner_start = marker.len();
+	let inner_end = length - marker.len();
+	let syntax = TextFormat::simple(font.clone(), colors.muted);
+	job.append(marker, 0.0, syntax.clone());
+	let mut formatted = TextFormat::simple(font.clone(), colors.text);
+	match marker {
+		"*" => formatted.italics = true,
+		"**" => formatted.font_id.family = crate::design::semibold_family(ui.ctx()),
+		"***" => {
+			formatted.font_id.family = crate::design::semibold_family(ui.ctx());
+			formatted.italics = true;
+		}
+		"__" => formatted.underline = egui::Stroke::new(1.0, colors.text),
+		"~~" => formatted.strikethrough = egui::Stroke::new(1.0, colors.text),
+		"`" => {
+			formatted.font_id = egui::FontId::monospace(font.size);
+			formatted.background = colors.raised;
+		}
+		_ => {}
+	}
+	job.append(&text[inner_start..inner_end], 0.0, formatted);
+	job.append(&text[inner_end..length], 0.0, syntax);
+}
+
 impl Layout {
 	#[cfg(any(test, debug_assertions))]
 	#[allow(clippy::too_many_arguments)]
@@ -134,6 +187,14 @@ impl Layout {
 		let mut projected = 0;
 		while byte < text.len() {
 			let tail = &text[byte..];
+			if let Some((_, length)) = markdown_pair(tail) {
+				append_markdown(ui, &mut job, tail, &font, colors);
+				let source_length = tail[..length].chars().count();
+				byte += length;
+				source += source_length;
+				projected += source_length;
+				continue;
+			}
 			let mut label = None;
 			let mut background = colors.accent.gamma_multiply(0.12);
 			let mut image = None;
@@ -446,6 +507,44 @@ impl Layout {
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[test]
+	fn markdown_pairs_keep_raw_syntax_and_apply_inline_styles() {
+		let ctx = egui::Context::default();
+		let samples = [
+			("*italic*", "*", true),
+			("**bold**", "**", false),
+			("***both***", "***", true),
+			("__under__", "__", false),
+			("~~strike~~", "~~", false),
+			("`code`", "`", false),
+		];
+		ctx.run_ui(Default::default(), |ui| {
+			let font = egui::TextStyle::Body.resolve(ui.style());
+			let colors = crate::design::palette(ui);
+			for (sample, marker, italics) in samples {
+				let mut job = LayoutJob::default();
+				append_markdown(ui, &mut job, sample, &font, colors);
+				assert_eq!(job.text, sample);
+				if italics {
+					assert!(job.sections.iter().any(|section| section.format.italics));
+				}
+				if marker == "~~" {
+					assert!(
+						job.sections
+							.iter()
+							.any(|section| { section.format.strikethrough != egui::Stroke::NONE })
+					);
+				}
+				assert!(job.sections.iter().any(|section| {
+					section.format.color == colors.muted && section.byte_range.len() == marker.len()
+				}));
+			}
+		});
+		assert!(markdown_pair("**bold**").is_some());
+		assert!(markdown_pair("***both***").is_some());
+		assert!(markdown_pair("unmatched * marker").is_none());
+	}
 
 	fn users() -> Vec<User> {
 		vec![User {

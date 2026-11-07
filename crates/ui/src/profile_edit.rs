@@ -12,6 +12,43 @@ struct Draft {
 	/// `Some(Some(uri))` uploads a new picture, `Some(None)` removes the current one.
 	avatar: Option<Option<String>>,
 }
+
+#[cfg(test)]
+mod crop_tests {
+	use super::*;
+
+	#[test]
+	fn avatar_crop_controls_select_different_square_regions() {
+		let ctx = egui::Context::default();
+		let source = egui::ColorImage::new(
+			[4, 2],
+			(0..8)
+				.map(|index| {
+					if index % 4 < 2 {
+						egui::Color32::RED
+					} else {
+						egui::Color32::BLUE
+					}
+				})
+				.collect(),
+		);
+		let mut crop = CropDraft {
+			texture: ctx.load_texture("crop-test", source.clone(), egui::TextureOptions::LINEAR),
+			source,
+			zoom: 1.0,
+			pan: egui::Vec2::new(-1.0, 0.0),
+			error: None,
+		};
+		let (left_uri, left) = encode_avatar_crop(&crop).unwrap();
+		crop.pan.x = 1.0;
+		let (right_uri, right) = encode_avatar_crop(&crop).unwrap();
+		assert!(model::valid_avatar_uri(&left_uri));
+		assert!(model::valid_avatar_uri(&right_uri));
+		assert_eq!(left.size, [256, 256]);
+		assert!(left.pixels[128 * 256 + 128].r() > left.pixels[128 * 256 + 128].b());
+		assert!(right.pixels[128 * 256 + 128].b() > right.pixels[128 * 256 + 128].r());
+	}
+}
 impl Draft {
 	fn from_profile(profile: &UserProfile) -> Self {
 		Self {
@@ -71,6 +108,20 @@ enum AvatarAction {
 	Undo,
 }
 
+struct CropDraft {
+	source: egui::ColorImage,
+	texture: egui::TextureHandle,
+	zoom: f32,
+	pan: egui::Vec2,
+	error: Option<&'static str>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum CropDecision {
+	Cancel,
+	Apply,
+}
+
 #[derive(Default)]
 pub(super) struct Editor {
 	generation: Option<u64>,
@@ -86,6 +137,7 @@ pub(super) struct Editor {
 	pending_picture: Option<egui::TextureHandle>,
 	/// Local copy of the last saved picture, keyed by the avatar hash the service returned.
 	saved_picture: Option<(Option<String>, egui::TextureHandle)>,
+	crop: Option<CropDraft>,
 }
 impl Editor {
 	/// Result of the native picker. Errors are returned so the caller can toast them.
@@ -107,8 +159,27 @@ impl Editor {
 		self.choosing = false;
 		match result {
 			Ok(Some((uri, image))) => {
-				if !model::valid_avatar_uri(&uri) || image.size[0] > 512 || image.size[1] > 512 {
+				if image.size[0] == 0
+					|| image.size[1] == 0
+					|| image.size[0] > 512
+					|| image.size[1] > 512
+					|| (!uri.is_empty() && !model::valid_avatar_uri(&uri))
+				{
 					return Err("That picture is too large; choose a simpler image");
+				}
+				if uri.is_empty() {
+					self.crop = Some(CropDraft {
+						texture: ctx.load_texture(
+							"profile-avatar-crop-source",
+							image.clone(),
+							egui::TextureOptions::LINEAR,
+						),
+						source: image,
+						zoom: 1.0,
+						pan: egui::Vec2::ZERO,
+						error: None,
+					});
+					return Ok(());
 				}
 				let Some(draft) = self.draft.as_mut() else {
 					return Ok(());
@@ -198,9 +269,42 @@ impl Editor {
 			draft.rebase(before, &fresh);
 		}
 		self.baseline = Some(fresh);
+		let crop_choice = self
+			.crop
+			.as_mut()
+			.and_then(|crop| crop_dialog(ui.ctx(), crop));
+		let mut cropped_avatar = None;
+		match crop_choice {
+			Some(CropDecision::Cancel) => self.crop = None,
+			Some(CropDecision::Apply) => {
+				if let Some(crop) = self.crop.as_ref() {
+					match encode_avatar_crop(crop) {
+						Ok(result) => {
+							cropped_avatar = Some(result);
+							self.crop = None;
+						}
+						Err(error) => {
+							if let Some(crop) = self.crop.as_mut() {
+								crop.error = Some(error);
+							}
+						}
+					}
+				}
+			}
+			None => {}
+		}
 		let draft = self
 			.draft
 			.get_or_insert_with(|| Draft::from_profile(profile));
+		if let Some((uri, preview)) = cropped_avatar {
+			draft.avatar = Some(Some(uri));
+			self.pending_picture = Some(ui.ctx().load_texture(
+				"profile-avatar-preview",
+				preview,
+				egui::TextureOptions::LINEAR,
+			));
+			self.saved = false;
+		}
 		let before = draft.clone();
 		let editable = !state.own_profile.loading && !state.own_profile.saving;
 		let picture = match &draft.avatar {
@@ -421,6 +525,99 @@ impl Editor {
 			);
 		}
 	}
+}
+
+fn crop_dialog(ctx: &egui::Context, crop: &mut CropDraft) -> Option<CropDecision> {
+	let colors = design::palette_for(ctx);
+	let mut decision = None;
+	egui::Modal::new(egui::Id::new("profile-avatar-crop"))
+		.frame(
+			egui::Frame::new()
+				.fill(colors.chat)
+				.stroke(egui::Stroke::new(1.0, colors.border))
+				.corner_radius(12)
+				.inner_margin(20),
+		)
+		.show(ctx, |ui| {
+			ui.set_width(340.0);
+			ui.heading("Crop profile picture");
+			ui.add_space(12.0);
+			let (preview, _) =
+				ui.allocate_exact_size(egui::Vec2::splat(240.0), egui::Sense::hover());
+			let width = crop.source.size[0] as f32;
+			let height = crop.source.size[1] as f32;
+			let side = (width.min(height) / crop.zoom.clamp(1.0, 3.0)).max(1.0);
+			let left = (width - side) * (crop.pan.x.clamp(-1.0, 1.0) + 1.0) * 0.5;
+			let top = (height - side) * (crop.pan.y.clamp(-1.0, 1.0) + 1.0) * 0.5;
+			let image = egui::Rect::from_min_size(
+				egui::pos2(
+					preview.left() - preview.width() * left / side,
+					preview.top() - preview.height() * top / side,
+				),
+				egui::vec2(
+					preview.width() * width / side,
+					preview.height() * height / side,
+				),
+			);
+			ui.painter().with_clip_rect(preview).image(
+				crop.texture.id(),
+				image,
+				egui::Rect::EVERYTHING,
+				egui::Color32::WHITE,
+			);
+			ui.painter().circle_stroke(
+				preview.center(),
+				preview.width() * 0.5,
+				egui::Stroke::new(2.0, egui::Color32::WHITE),
+			);
+			ui.add_space(8.0);
+			ui.add(egui::Slider::new(&mut crop.zoom, 1.0..=3.0).text("Zoom"));
+			ui.add(egui::Slider::new(&mut crop.pan.x, -1.0..=1.0).text("Horizontal"));
+			ui.add(egui::Slider::new(&mut crop.pan.y, -1.0..=1.0).text("Vertical"));
+			if let Some(error) = crop.error {
+				design::notice(ui, design::Level::Error, error);
+			}
+			ui.add_space(8.0);
+			ui.horizontal(|ui| {
+				if design::button(ui, "Cancel", design::ButtonKind::Neutral).clicked() {
+					decision = Some(CropDecision::Cancel);
+				}
+				if design::button(ui, "Use photo", design::ButtonKind::Primary).clicked() {
+					decision = Some(CropDecision::Apply);
+				}
+			});
+		});
+	decision
+}
+
+fn encode_avatar_crop(crop: &CropDraft) -> Result<(String, egui::ColorImage), &'static str> {
+	let width = crop.source.size[0] as u32;
+	let height = crop.source.size[1] as u32;
+	let side = ((width.min(height) as f32) / crop.zoom.clamp(1.0, 3.0))
+		.round()
+		.clamp(1.0, width.min(height) as f32) as u32;
+	let x = (((width - side) as f32 * (crop.pan.x.clamp(-1.0, 1.0) + 1.0) * 0.5).round())
+		.min((width - side) as f32) as u32;
+	let y = (((height - side) as f32 * (crop.pan.y.clamp(-1.0, 1.0) + 1.0) * 0.5).round())
+		.min((height - side) as f32) as u32;
+	let bytes: Vec<_> = crop
+		.source
+		.pixels
+		.iter()
+		.flat_map(|pixel| pixel.to_srgba_unmultiplied())
+		.collect();
+	let source =
+		image::RgbaImage::from_raw(width, height, bytes).ok_or("Could not prepare that crop")?;
+	let square = image::imageops::crop_imm(&source, x, y, side, side).to_image();
+	let resized = image::imageops::resize(&square, 256, 256, image::imageops::FilterType::Lanczos3);
+	let mut png = std::io::Cursor::new(Vec::new());
+	image::DynamicImage::ImageRgba8(resized.clone())
+		.write_to(&mut png, image::ImageFormat::Png)
+		.map_err(|_| "Could not encode that crop")?;
+	let uri = discord_protocol::group_actions::icon_data_uri(png.get_ref())
+		.ok_or("This crop is too large; adjust it and try again")?;
+	let preview = egui::ColorImage::from_rgba_unmultiplied([256, 256], resized.as_raw());
+	Ok((uri, preview))
 }
 
 fn form(

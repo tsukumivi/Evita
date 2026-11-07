@@ -34,6 +34,29 @@ impl GroupIcon {
 		title: &'static str,
 		output_edge: u32,
 	) -> Result<(), &'static str> {
+		self.start_with(scope, runtime, context, parent, title, output_edge, true)
+	}
+	pub fn start_profile(
+		&mut self,
+		scope: Scope,
+		runtime: &tokio::runtime::Handle,
+		context: &egui::Context,
+		parent: Arc<winit::window::Window>,
+		title: &'static str,
+		output_edge: u32,
+	) -> Result<(), &'static str> {
+		self.start_with(scope, runtime, context, parent, title, output_edge, false)
+	}
+	fn start_with(
+		&mut self,
+		scope: Scope,
+		runtime: &tokio::runtime::Handle,
+		context: &egui::Context,
+		parent: Arc<winit::window::Window>,
+		title: &'static str,
+		output_edge: u32,
+		square: bool,
+	) -> Result<(), &'static str> {
 		if self.choosing.is_some() {
 			return Err("Close the previous image picker first");
 		}
@@ -50,7 +73,7 @@ impl GroupIcon {
 						if decode_flag.load(Ordering::Acquire) {
 							Ok(None)
 						} else {
-							read(&path, output_edge).map(Some)
+							read(&path, output_edge, square).map(Some)
 						}
 					})
 					.await
@@ -111,7 +134,11 @@ impl Drop for GroupIcon {
 	}
 }
 
-fn read(path: &Path, output_edge: u32) -> Result<(String, egui::ColorImage), &'static str> {
+fn read(
+	path: &Path,
+	output_edge: u32,
+	square: bool,
+) -> Result<(String, egui::ColorImage), &'static str> {
 	let metadata =
 		std::fs::symlink_metadata(path).map_err(|_| "Could not open the chosen image")?;
 	if !metadata.is_file() || metadata.file_type().is_symlink() {
@@ -125,7 +152,7 @@ fn read(path: &Path, output_edge: u32) -> Result<(String, egui::ColorImage), &'s
 	file.take(MAX_INPUT as u64 + 1)
 		.read_to_end(&mut bytes)
 		.map_err(|_| "Could not read the chosen image")?;
-	decode(&bytes, output_edge)
+	decode_image(&bytes, output_edge, square)
 }
 
 fn decode(bytes: &[u8], output_edge: u32) -> Result<(String, egui::ColorImage), &'static str> {
@@ -137,9 +164,18 @@ pub(crate) fn decode_image(
 	output_edge: u32,
 	square: bool,
 ) -> Result<(String, egui::ColorImage), &'static str> {
-	let (png, preview) = decode_png(bytes, output_edge, square, 256 * 1024)?;
-	let uri = discord_protocol::group_actions::icon_data_uri(&png)
-		.ok_or("Prepared icon exceeds 256 KB; choose a simpler image")?;
+	let (png, preview) = decode_png(
+		bytes,
+		output_edge,
+		square,
+		if square { 256 * 1024 } else { 2 * 1024 * 1024 },
+	)?;
+	let uri = if square {
+		discord_protocol::group_actions::icon_data_uri(&png)
+			.ok_or("Prepared icon exceeds 256 KB; choose a simpler image")?
+	} else {
+		String::new()
+	};
 	Ok((uri, preview))
 }
 
