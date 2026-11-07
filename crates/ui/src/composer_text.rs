@@ -519,7 +519,7 @@ mod tests {
 			("~~strike~~", "~~", false),
 			("`code`", "`", false),
 		];
-		let _ = ctx.run_ui(Default::default(), |ui| {
+		let output = ctx.run_ui(Default::default(), |ui| {
 			let font = egui::TextStyle::Body.resolve(ui.style());
 			let colors = crate::design::palette(ui);
 			for (sample, marker, italics) in samples {
@@ -542,6 +542,7 @@ mod tests {
 				}));
 			}
 		});
+		output.drop_without_applying_deltas();
 		assert!(markdown_pair("**bold**").is_some());
 		assert!(markdown_pair("***both***").is_some());
 		assert!(markdown_pair("unmatched * marker").is_none());

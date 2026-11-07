@@ -811,7 +811,13 @@ impl JoinDialog {
 							ui.label("You are already a member of this server.");
 						}
 						ui.add_space(8.0);
-						let label = if member || accepted { "Joined" } else { "Join" };
+						let label = if member || accepted {
+							"Joined"
+						} else if state.invite_join.pending {
+							"Please wait…"
+						} else {
+							"Join"
+						};
 						let enabled = ready
 							&& !state.demo && !loading
 							&& !member && !accepted
