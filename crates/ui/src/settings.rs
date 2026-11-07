@@ -28,6 +28,7 @@ enum Page {
 	Notifications,
 	/// Discord's Registered Games: activity sharing, the current game and Added Games.
 	Activity,
+	Quests,
 	Voice,
 	Keybinds,
 	/// Display language and clock style.
@@ -39,7 +40,7 @@ enum Page {
 }
 impl Page {
 	/// Every page in sidebar order; the narrow-window page picker lists them the same way.
-	const ALL: [Self; 15] = [
+	const ALL: [Self; 16] = [
 		Self::Account,
 		Self::Profile,
 		Self::MessagingPermissions,
@@ -50,6 +51,7 @@ impl Page {
 		Self::Voice,
 		Self::Keybinds,
 		Self::Activity,
+		Self::Quests,
 		Self::LanguageTime,
 		Self::General,
 		Self::Updates,
@@ -77,6 +79,7 @@ impl Page {
 				Self::Voice,
 				Self::Keybinds,
 				Self::Activity,
+				Self::Quests,
 				Self::LanguageTime,
 				Self::General,
 				Self::Updates,
@@ -93,6 +96,7 @@ impl Page {
 			Self::MessagingPermissions => icons::Icon::ShieldWarning,
 			Self::Notifications => icons::Icon::Bell,
 			Self::Activity => icons::Icon::GameController,
+			Self::Quests => icons::Icon::Star,
 			Self::Voice => icons::Icon::Microphone,
 			Self::Keybinds => icons::Icon::SortArrows,
 			Self::LanguageTime => icons::Icon::Globe,
@@ -113,6 +117,7 @@ impl Page {
 			Self::MessagingPermissions => "page-messaging-permissions",
 			Self::Notifications => "page-notifications",
 			Self::Activity => "page-registered-games",
+			Self::Quests => "page-quests",
 			Self::Voice => "page-voice",
 			Self::Keybinds => "page-keybinds",
 			Self::Storage => "page-storage",
@@ -135,6 +140,7 @@ impl Page {
 			Self::MessagingPermissions => "description-messaging-permissions",
 			Self::Notifications => "description-notifications",
 			Self::Activity => "description-registered-games",
+			Self::Quests => "description-quests",
 			Self::Voice => "description-voice",
 			Self::Keybinds => "description-keybinds",
 			Self::Storage => "description-storage",
@@ -168,6 +174,7 @@ impl Page {
 			Self::Activity => {
 				"game activity playing osu status presence sharing registered games added current game detection detected process program executable rename wrong add hide last played"
 			}
+			Self::Quests => "quests rewards promotions games discover",
 			Self::Voice => {
 				"voice video camera preview audio microphone speakers devices volume gain noise suppression push to talk"
 			}
@@ -491,6 +498,7 @@ impl MessagingUi {
 										self.notification_settings(ui, state.demo)
 									}
 									Page::Activity => self.activity_settings(ui, state),
+									Page::Quests => self.quests_settings(ui),
 									Page::Voice => self.voice_settings_content(
 										ui,
 										state.demo,
@@ -1327,6 +1335,39 @@ impl MessagingUi {
 		});
 		ui.add_space(24.0);
 		self.registered_games_settings(ui, state.demo);
+	}
+
+	fn quests_settings(&mut self, ui: &mut egui::Ui) {
+		design::group(
+			ui,
+			&crate::i18n::translate("settings-quests-page-quest-home"),
+			|ui| {
+				design::row(
+					ui,
+					"settings-quests-open-discord-quest-home",
+					Some("settings-quests-availability-and-rewards-are-managed-in-discord"),
+					|ui| {
+						if design::button(
+							ui,
+							"settings-quests-open-discord",
+							design::ButtonKind::Outline,
+						)
+						.clicked()
+						{
+							ui.ctx()
+								.open_url(egui::OpenUrl::new_tab("https://discord.com/app"));
+						}
+					},
+				);
+				design::card_divider(ui);
+				design::hint(
+					ui,
+					&crate::i18n::translate(
+						"settings-quests-open-discord-and-choose-discover-then-quests",
+					),
+				);
+			},
+		);
 	}
 
 	fn storage_page(&mut self, ui: &mut egui::Ui, state: &State) {

@@ -43,6 +43,7 @@ pub struct TimelineView {
 	pub(super) extension_request: Option<(crate::extensions_ui::MenuAction, String)>,
 	pub(super) user_action: Option<crate::user_menu::Action>,
 	pub(super) restore_pending: Option<String>,
+	pub(super) retry_pending: Option<String>,
 	/// A failed own row the reader dismissed this frame.
 	pub(super) dismiss_pending: Option<String>,
 	pub(super) cancel_upload: bool,
@@ -4643,6 +4644,7 @@ impl TimelineView {
 						upload,
 						(
 							&mut self.restore_pending,
+							&mut self.retry_pending,
 							&mut self.dismiss_pending,
 							&mut self.cancel_upload,
 						),

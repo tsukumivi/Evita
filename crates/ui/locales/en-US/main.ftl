@@ -15,6 +15,7 @@ page-chat = Chat
 page-messaging-permissions = Messaging Permissions
 page-notifications = Notifications
 page-registered-games = Registered Games
+page-quests = Quests
 page-voice = Voice & Video
 page-keybinds = Keybinds
 page-storage = Data & Privacy
@@ -29,6 +30,7 @@ description-chat = How messages, media, links and scrolling behave.
 description-messaging-permissions = Control who can contact you and how messages are filtered.
 description-notifications = Choose which notifications you receive and how they appear.
 description-registered-games = Share what you play, and fix or add the games Evita detects.
+description-quests = View available quests and rewards on Discord.
 description-voice = Microphone, speakers, camera and voice processing.
 description-keybinds = Keyboard shortcuts for Evita.
 description-storage = What Evita keeps on this device.
@@ -3395,6 +3397,11 @@ settings-account-page-signed-in-with-your-discord-account = Signed in with your 
 settings-activity-settings-detect-running-games-and-ask-discord-to-share-them-as = Detect running games and ask Discord to share them as activity.
 # Context: activity_settings
 settings-activity-settings-share-game-activity = Share game activity
+settings-quests-page-quest-home = Quest Home
+settings-quests-open-discord-quest-home = Open Discord Quest Home
+settings-quests-availability-and-rewards-are-managed-in-discord = Quest availability, progress, and rewards are managed by Discord.
+settings-quests-open-discord = Open Discord
+settings-quests-open-discord-and-choose-discover-then-quests = In Discord, choose Discover, then Quests. Quest availability depends on your account and region.
 # Context: activity_settings
 settings-activity-enable-on-discord = Enable on Discord
 # Context: activity_settings
