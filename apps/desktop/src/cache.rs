@@ -68,6 +68,9 @@ pub enum Operation {
 	LoadDrafts,
 	LoadGifFavorites,
 	SaveGifFavorites(Vec<model::Gif>),
+	LoadStickerFavorites,
+	SaveStickerFavorites(Vec<model::Sticker>),
+	UpdateMessageAuthor(Box<model::User>),
 	LoadChannelPreferences,
 	SaveChannelPreferences(model::ChannelPreferences),
 	LoadAccountPresences,
@@ -119,6 +122,7 @@ pub enum Outcome {
 	MinimizeToTraySaved(Result<(), StoreError>),
 	Drafts(BTreeMap<Id, String>),
 	GifFavorites(Vec<model::Gif>),
+	StickerFavorites(Vec<model::Sticker>),
 	ChannelPreferences(Result<model::ChannelPreferences, StoreError>),
 	ChannelPreferencesSaved(Result<(), StoreError>),
 	AccountPresences(Result<std::collections::BTreeMap<model::Id, model::OwnPresence>, StoreError>),
@@ -264,6 +268,29 @@ impl Cache {
 				favorites.iter().map(model::Gif::bytes).sum::<usize>()
 					+ favorites.capacity() * size_of::<model::Gif>()
 			}
+			Operation::SaveStickerFavorites(favorites) => {
+				if favorites.len() > model::MAX_STICKER_FAVORITES
+					|| favorites.capacity() * size_of::<model::Sticker>()
+						+ favorites
+							.iter()
+							.map(model::Sticker::heap_bytes)
+							.sum::<usize>() > 64 * 1024
+					|| !favorites.iter().all(model::Sticker::valid)
+				{
+					return false;
+				}
+				favorites.capacity() * size_of::<model::Sticker>()
+					+ favorites
+						.iter()
+						.map(model::Sticker::heap_bytes)
+						.sum::<usize>()
+			}
+			Operation::UpdateMessageAuthor(user) => {
+				if user.id.0 == 0 || user.name.len() > 128 {
+					return false;
+				}
+				user.heap_bytes()
+			}
 			Operation::SaveAppPreferences(value) => {
 				if !value.is_valid() {
 					return false;
@@ -349,6 +376,13 @@ impl Cache {
 					Outcome::GifFavorites(favorites) => {
 						favorites.iter().map(model::Gif::bytes).sum::<usize>()
 							+ favorites.capacity() * size_of::<model::Gif>()
+					}
+					Outcome::StickerFavorites(favorites) => {
+						favorites.capacity() * size_of::<model::Sticker>()
+							+ favorites
+								.iter()
+								.map(model::Sticker::heap_bytes)
+								.sum::<usize>()
 					}
 					Outcome::Accounts { roster, pruned } => {
 						roster.as_ref().map_or(0, |accounts| {
@@ -552,6 +586,13 @@ fn execute(
 		Operation::SaveGifFavorites(_) => {
 			"Could not save GIF favorites; the change exists only in this session"
 		}
+		Operation::LoadStickerFavorites => "Could not restore sticker favorites from local storage",
+		Operation::SaveStickerFavorites(_) => {
+			"Could not save sticker favorites; the change exists only in this session"
+		}
+		Operation::UpdateMessageAuthor(_) => {
+			"Could not update cached message authors in local storage"
+		}
 		Operation::LoadChannel { .. } => "Could not read cached history",
 		Operation::LoadCustomFont
 		| Operation::SaveCustomFont(_)
@@ -603,6 +644,15 @@ fn execute(
 			Operation::LoadGifFavorites => store.gif_favorites(account).map(Outcome::GifFavorites),
 			Operation::SaveGifFavorites(favorites) => store
 				.save_gif_favorites(account, &favorites)
+				.map(|_| Outcome::Saved),
+			Operation::LoadStickerFavorites => store
+				.sticker_favorites(account)
+				.map(Outcome::StickerFavorites),
+			Operation::SaveStickerFavorites(favorites) => store
+				.save_sticker_favorites(account, &favorites)
+				.map(|_| Outcome::Saved),
+			Operation::UpdateMessageAuthor(user) => store
+				.update_message_author(account, &user)
 				.map(|_| Outcome::Saved),
 			Operation::LoadChannel { channel, request } => {
 				store.load_channel(account, channel).and_then(|messages| {

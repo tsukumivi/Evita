@@ -3,6 +3,7 @@ use client_core::Command;
 use discord_api::upload::{Source, Status};
 use eframe::egui;
 use model::Id;
+use std::collections::VecDeque;
 use std::sync::{
 	Arc,
 	atomic::{AtomicBool, AtomicUsize, Ordering},
@@ -45,6 +46,8 @@ const PARKED_BYTES: u64 = 64 * 1024 * 1024;
 const EMOJI_EDGE: u32 = 48;
 const STICKER_EDGE: u32 = 160;
 const ARTWORK_FRAMES: usize = 240;
+const RETRY_SENDS: usize = 8;
+const RETRY_MEMORY_BYTES: u64 = 64 * 1024 * 1024;
 
 fn apng_delay(delay: image::Delay) -> (u16, u16) {
 	let (numerator, denominator) = delay.numer_denom_ms();
@@ -380,6 +383,17 @@ struct ExternalUploading {
 	generation: u64,
 	key: Option<u64>,
 }
+struct FailedSend {
+	nonce: String,
+	generation: u64,
+	channel: Id,
+	sources: Vec<Source>,
+}
+impl FailedSend {
+	fn retained_memory_bytes(&self) -> u64 {
+		self.sources.iter().map(Source::retained_memory_bytes).sum()
+	}
+}
 #[derive(Default)]
 pub struct Uploads {
 	external: Option<ExternalUploading>,
@@ -401,6 +415,8 @@ pub struct Uploads {
 	last: Option<Status>,
 	/// One problem, announced once. Drained by the caller into a toast.
 	notice: Option<&'static str>,
+	/// Reusable source handles for definite failures; never replayed for ambiguous delivery.
+	failed_sends: VecDeque<FailedSend>,
 }
 impl Uploads {
 	#[allow(clippy::too_many_arguments)]
@@ -760,6 +776,10 @@ impl Uploads {
 		allowed: bool,
 		keep: impl Fn(Id) -> bool,
 	) {
+		// Retry sources may contain private pasted image bytes. Keep them across channels
+		// in one session, but never across account/session generations.
+		self.failed_sends
+			.retain(|entry| entry.generation == generation);
 		let target = channel.filter(|_| allowed).map(|id| (generation, id));
 		if !self.parked.is_empty() {
 			self.parked
@@ -1053,6 +1073,105 @@ impl Uploads {
 				.map(|c| c.source)
 				.collect()
 		})
+	}
+	/// Takes a message's staged files while keeping a bounded retry copy for a definite failure.
+	pub fn take_source_for_message(
+		&mut self,
+		generation: u64,
+		channel: Id,
+		nonce: &str,
+	) -> Option<Vec<Source>> {
+		if self.scope != Some((generation, channel)) || self.busy() || self.selected.is_empty() {
+			return None;
+		}
+		let sources: Vec<_> = self
+			.selected
+			.iter()
+			.map(|chosen| chosen.source.clone())
+			.collect();
+		let failed = FailedSend {
+			nonce: nonce.to_owned(),
+			generation,
+			channel,
+			sources: sources.clone(),
+		};
+		if failed.retained_memory_bytes() <= RETRY_MEMORY_BYTES {
+			self.failed_sends.retain(|entry| entry.nonce != nonce);
+			self.failed_sends.push_back(failed);
+			while self.failed_sends.len() > RETRY_SENDS
+				|| self
+					.failed_sends
+					.iter()
+					.map(FailedSend::retained_memory_bytes)
+					.sum::<u64>() > RETRY_MEMORY_BYTES
+			{
+				self.failed_sends.pop_front();
+			}
+		}
+		self.take_source(generation, channel)
+	}
+	/// Retains files after definite failures, but discards retry material for accepted or unknown sends.
+	pub fn finish_message(&mut self, nonce: &str, accepted: bool, ambiguous: bool) {
+		if accepted || ambiguous {
+			self.discard_failed_send(nonce);
+		}
+	}
+	pub fn discard_failed_send(&mut self, nonce: &str) {
+		self.failed_sends.retain(|entry| entry.nonce != nonce);
+	}
+	/// Returns the unchanged files to the composer for a user-reviewed retry.
+	pub fn restore_failed_send(
+		&mut self,
+		nonce: &str,
+		generation: u64,
+		channel: Id,
+		runtime: &tokio::runtime::Handle,
+		context: &egui::Context,
+	) -> Result<(), &'static str> {
+		if self.busy() || !self.selected.is_empty() {
+			return Err("Clear the current attachment selection before retrying this message");
+		}
+		if self
+			.scope
+			.is_some_and(|scope| scope != (generation, channel))
+		{
+			return Err("Open the original conversation before retrying these files");
+		}
+		let index = self
+			.failed_sends
+			.iter()
+			.position(|entry| {
+				entry.nonce == nonce && entry.generation == generation && entry.channel == channel
+			})
+			.ok_or(
+				"The retry files are no longer available; restore the message and reselect them",
+			)?;
+		self.admit(&self.failed_sends[index].sources)?;
+		let failed = self.failed_sends.remove(index).expect("retry entry exists");
+		self.scope = Some((generation, channel));
+		self.clear_finished_progress();
+		for source in failed.sources {
+			let key = self.push(source, None);
+			if previewable(
+				self.selected
+					.last()
+					.map_or("", |chosen| chosen.source.filename()),
+			) {
+				let (send, receive) = mpsc::sync_channel(1);
+				let context = context.clone();
+				let copy = self.selected.last().map(|chosen| chosen.source.clone());
+				runtime.spawn(async move {
+					let thumbnail = match copy {
+						Some(source) => preview(&source).await,
+						None => None,
+					};
+					let _ = send.send(thumbnail);
+					context.request_repaint();
+				});
+				self.previewing.push((key, receive));
+			}
+		}
+		Ok(())
 	}
 	pub fn begin_upload(
 		&mut self,
@@ -1774,6 +1893,7 @@ mod tests {
 			uploading: None,
 			last: None,
 			notice: None,
+			failed_sends: VecDeque::new(),
 		};
 		uploads.poll(2, Some(Id(2)), true, &context);
 		assert!(cancelled.load(Ordering::Acquire));
@@ -1807,6 +1927,38 @@ mod tests {
 		uploads.poll(2, Some(Id(2)), true, &context);
 		assert!(!uploads.busy());
 		assert_eq!(uploads.take_notice(), None);
+	}
+
+	#[tokio::test]
+	async fn definite_upload_failures_restore_files_but_ambiguous_sends_cannot_retry() {
+		let context = egui::Context::default();
+		let runtime = tokio::runtime::Handle::current();
+		let mut uploads = Uploads::default();
+		uploads.scope = Some((7, Id(1)));
+		uploads.push(Source::pasted_png(vec![1, 2, 3]).unwrap(), None);
+		assert_eq!(
+			uploads
+				.take_source_for_message(7, Id(1), "definite-failure")
+				.unwrap()
+				.len(),
+			1
+		);
+		uploads.finish_message("definite-failure", false, false);
+		uploads
+			.restore_failed_send("definite-failure", 7, Id(1), &runtime, &context)
+			.unwrap();
+		assert_eq!(uploads.files()[0].0, "pasted-image.png");
+
+		let sources = uploads
+			.take_source_for_message(7, Id(1), "ambiguous")
+			.unwrap();
+		assert_eq!(sources.len(), 1);
+		uploads.finish_message("ambiguous", false, true);
+		assert!(
+			uploads
+				.restore_failed_send("ambiguous", 7, Id(1), &runtime, &context)
+				.is_err()
+		);
 	}
 }
 

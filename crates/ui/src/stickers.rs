@@ -5,6 +5,7 @@ use model::{Id, Sticker};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(crate) enum Group {
+	Favorites,
 	Recent,
 	Guild(Id),
 	Pack(Id),
@@ -24,6 +25,13 @@ struct Section<'a> {
 
 fn sections(state: &State) -> Vec<Section<'_>> {
 	let mut sections = Vec::new();
+	if !state.stickers.favorites.is_empty() {
+		sections.push(Section {
+			id: Group::Favorites,
+			name: "Favorites",
+			stickers: &state.stickers.favorites,
+		});
+	}
 	if !state.stickers.recent.is_empty() {
 		sections.push(Section {
 			id: Group::Recent,
@@ -69,7 +77,7 @@ impl Browser {
 	pub fn show(
 		&mut self,
 		ui: &mut egui::Ui,
-		state: &State,
+		state: &mut State,
 		avatars: &mut Avatars,
 		hovered: &mut Option<(Sticker, String)>,
 		image_fallback: bool,
@@ -78,15 +86,22 @@ impl Browser {
 		let sections = sections(state);
 		let query = self.query.trim().to_lowercase();
 		let mut chosen = None;
+		let mut favorite = None;
 		ui.horizontal_top(|ui| {
 			ui.vertical(|ui| {
-				ui.set_width(40.0);
+				ui.set_width(52.0);
 				egui::ScrollArea::vertical()
 					.id_salt("sticker-rail")
 					.show(ui, |ui| {
 						for section in &sections {
 							let response = ui
 								.push_id(section.id, |ui| match section.id {
+									Group::Favorites => crate::icons::button(
+										ui,
+										crate::icons::Icon::StarFill,
+										32.0,
+										"Favorite stickers",
+									),
 									Group::Guild(id) => avatars.show_guild_sized(
 										ui,
 										state.guild(id).expect("section belongs to guild"),
@@ -117,11 +132,11 @@ impl Browser {
 			ui.separator();
 			ui.vertical(|ui| {
 				ui.set_width(ui.available_width());
-				let columns = (ui.available_width() / 104.0).floor().max(1.0) as usize;
+				let columns = (ui.available_width() / 124.0).floor().max(1.0) as usize;
 				let size = ((ui.available_width()
 					- (columns - 1) as f32 * ui.spacing().item_spacing.x)
 					/ columns as f32)
-					.min(120.0);
+					.min(136.0);
 				let mut results = 0;
 				egui::ScrollArea::vertical()
 					.id_salt("sticker-groups")
@@ -211,6 +226,34 @@ impl Browser {
 														)
 													})
 													.inner;
+												let is_favorite = state
+													.stickers
+													.favorites
+													.iter()
+													.any(|known| known.id == sticker.id);
+												let star_clicked = if is_favorite || response.contains_pointer() {
+													let star_rect = egui::Rect::from_min_size(
+														response.rect.right_top() + egui::vec2(-30.0, 4.0),
+														egui::vec2(26.0, 26.0),
+													);
+													let star = ui.put(
+														star_rect,
+														egui::Button::new(if is_favorite { "★" } else { "☆" })
+															.fill(colors.raised)
+															.stroke(egui::Stroke::new(1.0, colors.border)),
+													)
+													.on_hover_text(if is_favorite {
+														"Remove sticker from favorites"
+													} else {
+														"Add sticker to favorites"
+													});
+													star.clicked()
+												} else {
+													false
+												};
+												if star_clicked {
+													favorite = Some((*sticker).clone());
+												}
 												if response.contains_pointer()
 													|| response.has_focus()
 												{
@@ -219,7 +262,7 @@ impl Browser {
 														section.name.to_owned(),
 													));
 												}
-												if response.clicked() {
+												if response.clicked() && !star_clicked {
 													chosen = Some((*sticker).clone());
 												}
 												if !enabled {
@@ -261,6 +304,9 @@ impl Browser {
 					});
 			});
 		});
+		if let Some(sticker) = favorite {
+			state.toggle_sticker_favorite(&sticker);
+		}
 		chosen
 	}
 }
@@ -369,11 +415,12 @@ pub(crate) fn message(
 				.find(|section| match section.id {
 					Group::Guild(id) => detail.guild_id == Some(id),
 					Group::Pack(id) => detail.pack_id == Some(id),
+					Group::Favorites => false,
 					Group::Recent => false,
 				})
 				.or_else(|| {
 					sections.iter().find(|section| {
-						section.id != Group::Recent
+						!matches!(section.id, Group::Favorites | Group::Recent)
 							&& section.stickers.iter().any(|s| s.id == sticker.id)
 					})
 				});
