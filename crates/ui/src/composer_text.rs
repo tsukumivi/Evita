@@ -537,7 +537,8 @@ mod tests {
 					);
 				}
 				assert!(job.sections.iter().any(|section| {
-					section.format.color == colors.muted && section.byte_range.len() == marker.len()
+					section.format.color == colors.muted
+						&& section.byte_range.end.0 - section.byte_range.start.0 == marker.len()
 				}));
 			}
 		});
