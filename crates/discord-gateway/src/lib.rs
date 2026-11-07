@@ -3449,13 +3449,14 @@ mod member_tests {
 		short.bytes = 20;
 		short.record_to("\u{e9}", &mut output);
 		short.record_to("another line", &mut output);
-		assert_eq!(output, "[Evita members] \u{e9}\n".as_bytes());
+		let expected = "[Evita members] \u{e9}\n";
+		assert_eq!(output, expected.as_bytes());
 		assert_eq!((short.remaining, short.bytes), (63, 1));
 		static OVERSIZED: [u8; 8192] = [b'x'; 8192];
 		let mut oversized = Diagnostics::new("gateway", true);
 		oversized.record_to(std::str::from_utf8(&OVERSIZED).unwrap(), &mut output);
 		assert_eq!(oversized.remaining, 64);
-		assert_eq!(output.len(), 20);
+		assert_eq!(output.len(), expected.len());
 
 		struct Closed;
 		impl std::io::Write for Closed {
