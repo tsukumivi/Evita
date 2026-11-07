@@ -415,11 +415,12 @@ pub(crate) fn message(
 				.find(|section| match section.id {
 					Group::Guild(id) => detail.guild_id == Some(id),
 					Group::Pack(id) => detail.pack_id == Some(id),
+					Group::Favorites => false,
 					Group::Recent => false,
 				})
 				.or_else(|| {
 					sections.iter().find(|section| {
-						section.id != Group::Recent
+						!matches!(section.id, Group::Favorites | Group::Recent)
 							&& section.stickers.iter().any(|s| s.id == sticker.id)
 					})
 				});
