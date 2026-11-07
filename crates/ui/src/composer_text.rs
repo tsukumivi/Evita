@@ -519,7 +519,7 @@ mod tests {
 			("~~strike~~", "~~", false),
 			("`code`", "`", false),
 		];
-		ctx.run_ui(Default::default(), |ui| {
+		let _ = ctx.run_ui(Default::default(), |ui| {
 			let font = egui::TextStyle::Body.resolve(ui.style());
 			let colors = crate::design::palette(ui);
 			for (sample, marker, italics) in samples {
