@@ -417,6 +417,8 @@ pub struct MessagingUi {
 	pub remove_attachment_index: Option<usize>,
 	/// Downscaled pixels per selected file (`None` for non-images), produced off the render thread.
 	pub attachment_previews: Vec<Option<std::sync::Arc<egui::ColorImage>>>,
+	/// Index of the staged image being inspected in the full-window local preview.
+	pending_image_preview: Option<usize>,
 	/// GPU copies of `attachment_previews`, keyed by the pixel buffer they were uploaded from.
 	attachment_textures: Vec<Option<(usize, egui::TextureHandle)>>,
 	pub attach_requested: bool,
@@ -431,6 +433,10 @@ pub struct MessagingUi {
 	pasted_text_frame: Option<u64>,
 	pub remove_attachment_requested: bool,
 	pub cancel_upload_requested: bool,
+	/// Retry request for an explicitly rejected attachment send.
+	pub retry_pending_requested: Option<String>,
+	/// Drop retained retry handles after a failed pending row is dismissed.
+	pub discard_retry_upload_requested: Option<String>,
 	pub upload_busy: bool,
 	/// New attachments cannot be selected right now. Loading files and an upload in flight
 	/// do not set this: further files join the composer and sending waits instead.
@@ -2785,6 +2791,15 @@ impl MessagingUi {
 		self.draft_changes.push(channel);
 	}
 	fn restore_pending(&mut self, state: &mut State, channel: Id, nonce: &str) {
+		self.restore_pending_inner(state, channel, nonce, false);
+	}
+	fn restore_pending_inner(
+		&mut self,
+		state: &mut State,
+		channel: Id,
+		nonce: &str,
+		attachments_ready: bool,
+	) {
 		if let Some(index) = state.pending.iter().position(|p| {
 			p.nonce == nonce && p.channel == channel && p.delivery != model::Delivery::Sending
 		}) {
@@ -2797,7 +2812,11 @@ impl MessagingUi {
 			} else if state.drafts.get(&channel).is_none_or(String::is_empty) {
 				let pending = state.pending.remove(index);
 				if !pending.attachments.is_empty() {
-					state.status = "Text restored; reselect the attachment before sending again";
+					state.status = if attachments_ready {
+						"Files restored; review the message and press Send to retry"
+					} else {
+						"Text restored; reselect the attachment before sending again"
+					};
 				}
 				state.drafts.insert(channel, pending.content);
 				self.draft_changes.push(channel);
@@ -2811,6 +2830,10 @@ impl MessagingUi {
 				state.status = "Keep or clear the existing draft before restoring pending text";
 			}
 		}
+	}
+	/// Completes the retry button action after the desktop host restores the original file handles.
+	pub fn restore_pending_for_retry(&mut self, state: &mut State, channel: Id, nonce: &str) {
+		self.restore_pending_inner(state, channel, nonce, true);
 	}
 	/// Remembers the author seen while the target was loaded, so jumping to the latest
 	/// page or a send that comes back keeps naming who is being replied to.
@@ -4028,7 +4051,7 @@ impl MessagingUi {
 					for (index, (filename, bytes)) in files.iter().enumerate() {
 						ui.push_id(index, |ui| {
 							ui.vertical(|ui| {
-								if ui
+								match ui
 									.scope(|ui| {
 										attachments::pending_card(
 											ui,
@@ -4040,7 +4063,13 @@ impl MessagingUi {
 									})
 									.inner
 								{
-									self.remove_attachment_index = Some(index);
+									attachments::PendingCardAction::Remove => {
+										self.remove_attachment_index = Some(index);
+									}
+									attachments::PendingCardAction::Preview => {
+										self.pending_image_preview = Some(index);
+									}
+									attachments::PendingCardAction::None => {}
 								}
 								if *bytes > upload_limit
 									&& ui
@@ -4070,6 +4099,25 @@ impl MessagingUi {
 		ui.painter()
 			.hline(line, y, egui::Stroke::new(1.0, colors.border));
 		ui.add_space(6.0);
+	}
+	fn show_pending_image_preview(&mut self, ctx: &egui::Context) {
+		let Some(index) = self.pending_image_preview else {
+			return;
+		};
+		let Some((filename, _)) = self.selected_files().get(index).cloned() else {
+			self.pending_image_preview = None;
+			return;
+		};
+		let textures = self.attachment_textures(ctx);
+		let Some(texture) = textures.get(index).and_then(Option::as_ref).cloned() else {
+			self.pending_image_preview = None;
+			return;
+		};
+		let mut open = true;
+		attachments::pending_image_viewer(ctx, &texture, &filename, &mut open);
+		if !open {
+			self.pending_image_preview = None;
+		}
 	}
 	fn shows_title_bar(&self) -> bool {
 		if cfg!(target_os = "linux") {
@@ -5295,6 +5343,7 @@ impl MessagingUi {
 							state.discard_preserved_deleted(id);
 						}
 						if let Some(nonce) = self.timeline.restore_pending.take() {
+							self.discard_retry_upload_requested = Some(nonce.clone());
 							if state
 								.pending
 								.iter()
@@ -5305,9 +5354,13 @@ impl MessagingUi {
 								self.restore_pending(state, channel, &nonce);
 							}
 						}
+						if self.timeline.retry_pending.is_some() {
+							self.retry_pending_requested = self.timeline.retry_pending.take();
+						}
 						if let Some(nonce) = self.timeline.dismiss_pending.take()
 							&& let Some(channel) = state.discard_pending(&nonce)
 						{
+							self.discard_retry_upload_requested = Some(nonce);
 							// The recovery draft may have been the dismissed caption; save it again.
 							self.draft_changes.push(channel);
 						}
@@ -5816,6 +5869,7 @@ impl MessagingUi {
 		// Clear the title bar and channel header so a notice never sits on the chrome.
 		self.toasts
 			.show(&ctx, if self.shows_title_bar() { 96.0 } else { 60.0 });
+		self.show_pending_image_preview(&ctx);
 		self.preload.person(self.profile.take_hovered());
 		let profile_guild = self.profile_guild(state);
 		self.preload.finish(
@@ -10208,7 +10262,7 @@ pub fn debug_image_sharing(state: &mut State) -> (Vec<model::ImageShare>, String
 				&mut markdown::FormatCache::default(),
 			),
 			view.pending_upload.as_ref(),
-			(&mut None, &mut None, &mut false),
+			(&mut None, &mut None, &mut None, &mut false),
 		);
 	});
 	assert!(!output.shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Text(text) if text.galley.job.text == "Restore to composer")), "sending artwork has no restore button");

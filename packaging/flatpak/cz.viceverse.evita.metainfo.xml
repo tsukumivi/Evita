@@ -10,8 +10,8 @@
     <p>This client is unofficial and is not affiliated with Discord.</p>
   </description>
   <launchable type="desktop-id">app.evita.client.desktop</launchable>
-  <url type="homepage">https://github.com/ViceVerse-cz/Serein</url>
-  <url type="bugtracker">https://github.com/ViceVerse-cz/Serein/issues</url>
+  <url type="homepage">https://github.com/tsukumivi/Evita</url>
+  <url type="bugtracker">https://github.com/tsukumivi/Evita/issues</url>
   <developer id="cz.viceverse"><name>Evita contributors</name></developer>
   <content_rating type="oars-1.1">
     <content_attribute id="social-chat">intense</content_attribute>

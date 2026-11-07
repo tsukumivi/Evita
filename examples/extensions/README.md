@@ -166,7 +166,7 @@ The SDK also exports `Manifest`, `Action`, `Surface`, `ExtensionKind` and
 the same manifest as above:
 
 ```rust
-use serein_extension_sdk::{
+use evita_extension_sdk::{
     Action, Capability, ExtensionKind, Manifest, Surface, serde_json,
 };
 
@@ -217,7 +217,7 @@ Step 2: replace `examples/extensions/app-toolbox/src/lib.rs` with this handler.
 The `show` action matches the manifest above:
 
 ```rust
-use serein_extension_sdk::{AppInvocation, AppOutput, Element, Output};
+use evita_extension_sdk::{AppInvocation, AppOutput, Element, Output};
 
 fn handle(input: AppInvocation) -> AppOutput {
     if input.invocation.action != "show" {
@@ -235,7 +235,7 @@ fn handle(input: AppInvocation) -> AppOutput {
         ..Default::default()
     }
 }
-serein_extension_sdk::export!(handle);
+evita_extension_sdk::export!(handle);
 ```
 
 - `input.invocation.action` identifies the manifest action.
@@ -295,7 +295,7 @@ Step 6: append this offline test to the tutorial handler:
 ```rust
 #[test]
 fn missing_channel_is_handled() {
-    use serein_extension_sdk::{dispatch_typed, serde_json, AppOutput, Element};
+    use evita_extension_sdk::{dispatch_typed, serde_json, AppOutput, Element};
     let bytes = dispatch_typed(br#"{"action":"show"}"#, handle).unwrap();
     let output: AppOutput = serde_json::from_slice(&bytes).unwrap();
     assert!(matches!(&output.output.panel[0], Element::Text { text }

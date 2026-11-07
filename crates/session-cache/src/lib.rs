@@ -97,6 +97,40 @@ impl Timeline {
 		}
 		any
 	}
+	/// Replaces the cached author record on every loaded message after a live user update.
+	pub fn update_author(&mut self, user: &model::User) -> bool {
+		if user.id.0 == 0 {
+			return false;
+		}
+		let mut any = false;
+		for message in self.messages.values_mut().flatten() {
+			if message.author.id != user.id || message.author.webhook || message.author == *user {
+				continue;
+			}
+			let before = message.bytes();
+			message.author = user.clone();
+			self.bytes = self
+				.bytes
+				.saturating_sub(before)
+				.saturating_add(message.bytes());
+			any = true;
+		}
+		if any {
+			while self.row_count() > MAX_MESSAGES || self.row_bytes() > MAX_BYTES {
+				let item = if self.retain_older {
+					self.messages.pop_last()
+				} else {
+					self.older_evicted = true;
+					self.messages.pop_first()
+				};
+				if let Some((_, Some(old))) = item {
+					self.bytes -= old.bytes();
+					self.payload_count -= 1;
+				}
+			}
+		}
+		any
+	}
 	pub fn set_preserve_deleted_messages(&mut self, enabled: bool) {
 		if self.preserve_deleted_messages == enabled {
 			return;

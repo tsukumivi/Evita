@@ -113,7 +113,7 @@ contract; they are not standalone packages.
 | Term | Meaning |
 | --- | --- |
 | Wire field | The JSON key passed across the Wasm boundary |
-| Rust type | The corresponding type exported by `serein_extension_sdk` |
+| Rust type | The corresponding type exported by `evita_extension_sdk` |
 | Capability | A manifest permission that must also be granted by the user |
 | Action ID | Your manifest's stable action name; received in `action` |
 | Surface | Where the host can invoke an action: `panel`, `message`, `composer`, `activation`, `message_event`, `app_event`, or preview `tick` |

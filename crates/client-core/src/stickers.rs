@@ -6,6 +6,7 @@ use crate::{
 use model::{Id, Sticker, StickerPack};
 pub const MAX_PACKS: usize = 128;
 pub const MAX_PACK_BYTES: usize = 1024 * 1024;
+const MAX_FAVORITE_BYTES: usize = 64 * 1024;
 #[derive(Default)]
 pub struct Stickers {
 	pub external_allowed: bool,
@@ -14,6 +15,12 @@ pub struct Stickers {
 	pub loaded: bool,
 	pub error: Option<&'static str>,
 	pub recent: Vec<Sticker>,
+	/// User-picked stickers, persisted by the desktop host per account.
+	pub favorites: Vec<Sticker>,
+	/// Set when the displayed favorites need saving to local storage.
+	pub favorites_changed: bool,
+	favorites_restored: bool,
+	favorites_edited: bool,
 	pub detail: Option<Sticker>,
 	pub detail_loading: Option<Id>,
 	pub detail_error: Option<&'static str>,
@@ -26,6 +33,56 @@ pub fn pack_bytes(packs: &Vec<StickerPack>) -> usize {
 			.sum::<usize>()
 }
 impl State {
+	/// Toggles one valid sticker in the bounded, newest-first favorites list.
+	pub fn toggle_sticker_favorite(&mut self, sticker: &Sticker) -> bool {
+		if !sticker.valid() {
+			return false;
+		}
+		if let Some(index) = self
+			.stickers
+			.favorites
+			.iter()
+			.position(|known| known.id == sticker.id)
+		{
+			self.stickers.favorites.remove(index);
+		} else {
+			self.stickers.favorites.insert(0, sticker.clone());
+			self.stickers
+				.favorites
+				.truncate(model::MAX_STICKER_FAVORITES);
+			while model::sticker_bytes(&self.stickers.favorites) > MAX_FAVORITE_BYTES {
+				self.stickers.favorites.pop();
+			}
+		}
+		self.stickers.favorites_changed = true;
+		self.stickers.favorites_edited = true;
+		true
+	}
+	/// Restores safe local favorites without overwriting edits made before the disk read finished.
+	pub fn restore_sticker_favorites(&mut self, favorites: Vec<Sticker>) {
+		if self.stickers.favorites_restored {
+			return;
+		}
+		self.stickers.favorites_restored = true;
+		if self.stickers.favorites_edited {
+			return;
+		}
+		let mut restored = Vec::new();
+		for sticker in favorites {
+			if sticker.valid()
+				&& !restored
+					.iter()
+					.any(|known: &Sticker| known.id == sticker.id)
+				&& restored.len() < model::MAX_STICKER_FAVORITES
+			{
+				restored.push(sticker);
+			}
+		}
+		while model::sticker_bytes(&restored) > MAX_FAVORITE_BYTES {
+			restored.pop();
+		}
+		self.stickers.favorites = restored;
+	}
 	pub(crate) fn interrupt_stickers(&mut self) {
 		if self.stickers.loading {
 			self.stickers.loading = false;
@@ -286,5 +343,30 @@ mod tests {
 		assert!(!state.sticker_requires_nitro(&external));
 		state.channels[0].guild = Some(Id(100));
 		assert!(state.sticker_requires_nitro(&external));
+	}
+
+	#[test]
+	fn sticker_favorites_toggle_and_late_restore_preserves_user_edits() {
+		let sticker = Sticker {
+			id: Id(50),
+			name: "Wave".into(),
+			description: String::new(),
+			tags: "wave".into(),
+			format_type: 1,
+			guild_id: None,
+			pack_id: Some(Id(9)),
+			available: true,
+		};
+		let mut state = State::default();
+		assert!(state.toggle_sticker_favorite(&sticker));
+		assert_eq!(state.stickers.favorites, vec![sticker.clone()]);
+		state.restore_sticker_favorites(Vec::new());
+		assert_eq!(state.stickers.favorites, vec![sticker.clone()]);
+		assert!(state.toggle_sticker_favorite(&sticker));
+		assert!(state.stickers.favorites.is_empty());
+
+		let mut restored = State::default();
+		restored.restore_sticker_favorites(vec![sticker.clone(), sticker.clone()]);
+		assert_eq!(restored.stickers.favorites, vec![sticker]);
 	}
 }

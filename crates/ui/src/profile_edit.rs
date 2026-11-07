@@ -218,7 +218,45 @@ impl Editor {
 		};
 		let mut action = None;
 		let width = ui.available_width();
-		if width >= 620.0 {
+		if width >= 900.0 {
+			ui.horizontal_top(|ui| {
+				ui.spacing_mut().item_spacing.x = 16.0;
+				ui.allocate_ui_with_layout(
+					egui::vec2(300.0, 0.0),
+					egui::Layout::top_down(egui::Align::Min),
+					|ui| {
+						ui.add_enabled_ui(editable, |ui| {
+							action = form(ui, draft, profile, self.choosing);
+						});
+					},
+				);
+				ui.allocate_ui_with_layout(
+					egui::vec2(300.0, 0.0),
+					egui::Layout::top_down(egui::Align::Min),
+					|ui| {
+						if let Some(picked) = preview(
+							ui,
+							draft,
+							profile,
+							avatars,
+							(state.demo, &state.guilds),
+							&mut self.preview_link,
+							picture,
+							editable && !self.choosing,
+						) {
+							action = Some(picked);
+						}
+					},
+				);
+				ui.allocate_ui_with_layout(
+					egui::vec2((width - 632.0).max(240.0), 0.0),
+					egui::Layout::top_down(egui::Align::Min),
+					|ui| {
+						crate::profiles::board_widgets_readonly(ui, profile, avatars, state.demo);
+					},
+				);
+			});
+		} else if width >= 620.0 {
 			ui.horizontal_top(|ui| {
 				ui.spacing_mut().item_spacing.x = 24.0;
 				ui.allocate_ui_with_layout(
@@ -471,11 +509,25 @@ fn form(
 	);
 	ui.add_space(8.0);
 	let mut enabled = draft.color.is_some();
-	design::row(
-		ui,
-		"profile-edit-form-profile-color",
-		Some("profile-edit-form-tints-your-banner-when-you-have-not-set-a-banner"),
-		|ui| {
+	ui.vertical(|ui| {
+		ui.spacing_mut().item_spacing.y = 3.0;
+		ui.label(
+			design::medium(
+				ui,
+				crate::i18n::translate("profile-edit-form-profile-color"),
+				15.0,
+			)
+			.color(colors.text_strong),
+		);
+		ui.label(
+			egui::RichText::new(crate::i18n::translate(
+				"profile-edit-form-tints-your-banner-when-you-have-not-set-a-banner",
+			))
+			.size(13.0)
+			.color(colors.muted),
+		);
+		ui.add_space(4.0);
+		ui.horizontal(|ui| {
 			if let Some(color) = &mut draft.color {
 				let mut rgb = [(*color >> 16) as u8, (*color >> 8) as u8, *color as u8];
 				if design::color_edit(ui, &mut rgb)
@@ -500,8 +552,8 @@ fn form(
 			{
 				enabled = true;
 			}
-		},
-	);
+		});
+	});
 	if enabled != draft.color.is_some() {
 		// Start from the profile's own colors rather than the app accent.
 		draft.color = enabled.then(|| {

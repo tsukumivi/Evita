@@ -1,7 +1,7 @@
 {
   "manifest": {
     "api_version": 1,
-    "id": "serein-ocean",
+    "id": "evita-ocean",
     "name": "Ocean",
     "version": "1.0.0",
     "author": "Serein contributors",

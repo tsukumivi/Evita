@@ -31,7 +31,7 @@ To install Evita configured to receive automatic updates from the hosted OSTree 
 ```sh
 flatpak install --user packaging/flatpak/evita.flatpakref
 # Or from a published URL:
-# flatpak install --user https://viceverse-cz.github.io/Serein/flatpak/evita.flatpakref
+# flatpak install --user https://tsukumivi.github.io/Evita/flatpak/evita.flatpakref
 ```
 
 Once installed via `.flatpakref`, your desktop environment (GNOME Software, KDE Discover)

@@ -984,7 +984,12 @@ impl Picker {
 			self.server = None;
 		}
 		let bounds = ui.ctx().content_rect().shrink(8.0);
-		let width = WIDTH.min(bounds.width());
+		let preferred_width = if self.tab == Tab::Stickers {
+			STICKER_WIDTH
+		} else {
+			WIDTH
+		};
+		let width = preferred_width.min(bounds.width());
 		let height = HEIGHT.min(bounds.height());
 		let clearable = match self.reaction {
 			Some((Target::Choose { clearable }, _, _)) => Some(clearable),
@@ -2064,6 +2069,7 @@ impl Picker {
 }
 
 const WIDTH: f32 = 424.0;
+const STICKER_WIDTH: f32 = 520.0;
 const HEIGHT: f32 = 476.0;
 const TILE_GAP: f32 = 8.0;
 const TILE_HEIGHT: f32 = 92.0;

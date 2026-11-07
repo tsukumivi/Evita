@@ -40,7 +40,12 @@ pub fn show(
 		&mut crate::markdown::FormatCache,
 	),
 	upload: Option<&Upload>,
-	(restore, dismiss, cancel): (&mut Option<String>, &mut Option<String>, &mut bool),
+	(restore, retry, dismiss, cancel): (
+		&mut Option<String>,
+		&mut Option<String>,
+		&mut Option<String>,
+		&mut bool,
+	),
 ) {
 	let colors = design::palette(ui);
 	let (avatars, opening, profile, channel, formats) = media;
@@ -242,6 +247,14 @@ pub fn show(
 							);
 						}
 						ui.horizontal(|ui| {
+							if pending.delivery == Delivery::Rejected
+								&& !pending.attachments.is_empty()
+								&& ui
+									.button(crate::i18n::translate("channel-menu-show-retry"))
+									.clicked()
+							{
+								*retry = Some(pending.nonce.clone());
+							}
 							if ui
 								.button(crate::i18n::translate_if_key(
 									&(if pending.sticker.is_some() {

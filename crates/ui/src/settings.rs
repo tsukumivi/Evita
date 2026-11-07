@@ -28,6 +28,7 @@ enum Page {
 	Notifications,
 	/// Discord's Registered Games: activity sharing, the current game and Added Games.
 	Activity,
+	Quests,
 	Voice,
 	Keybinds,
 	/// Display language and clock style.
@@ -39,7 +40,7 @@ enum Page {
 }
 impl Page {
 	/// Every page in sidebar order; the narrow-window page picker lists them the same way.
-	const ALL: [Self; 15] = [
+	const ALL: [Self; 16] = [
 		Self::Account,
 		Self::Profile,
 		Self::MessagingPermissions,
@@ -50,6 +51,7 @@ impl Page {
 		Self::Voice,
 		Self::Keybinds,
 		Self::Activity,
+		Self::Quests,
 		Self::LanguageTime,
 		Self::General,
 		Self::Updates,
@@ -77,6 +79,7 @@ impl Page {
 				Self::Voice,
 				Self::Keybinds,
 				Self::Activity,
+				Self::Quests,
 				Self::LanguageTime,
 				Self::General,
 				Self::Updates,
@@ -84,6 +87,25 @@ impl Page {
 		),
 		("section-customization", &[Self::Themes, Self::Extensions]),
 	];
+	fn icon(self) -> icons::Icon {
+		match self {
+			Self::Account | Self::Profile => icons::Icon::Profile,
+			Self::General => icons::Icon::Gear,
+			Self::Appearance => icons::Icon::Sliders,
+			Self::Chat => icons::Icon::Forum,
+			Self::MessagingPermissions => icons::Icon::ShieldWarning,
+			Self::Notifications => icons::Icon::Bell,
+			Self::Activity => icons::Icon::GameController,
+			Self::Quests => icons::Icon::Star,
+			Self::Voice => icons::Icon::Microphone,
+			Self::Keybinds => icons::Icon::SortArrows,
+			Self::LanguageTime => icons::Icon::Globe,
+			Self::Storage => icons::Icon::Folder,
+			Self::Updates => icons::Icon::Reload,
+			Self::Extensions => icons::Icon::Sparkle,
+			Self::Themes => icons::Icon::Image,
+		}
+	}
 	fn label_key(self) -> &'static str {
 		match self {
 			Self::Account => "page-account",
@@ -95,6 +117,7 @@ impl Page {
 			Self::MessagingPermissions => "page-messaging-permissions",
 			Self::Notifications => "page-notifications",
 			Self::Activity => "page-registered-games",
+			Self::Quests => "page-quests",
 			Self::Voice => "page-voice",
 			Self::Keybinds => "page-keybinds",
 			Self::Storage => "page-storage",
@@ -117,6 +140,7 @@ impl Page {
 			Self::MessagingPermissions => "description-messaging-permissions",
 			Self::Notifications => "description-notifications",
 			Self::Activity => "description-registered-games",
+			Self::Quests => "description-quests",
 			Self::Voice => "description-voice",
 			Self::Keybinds => "description-keybinds",
 			Self::Storage => "description-storage",
@@ -150,6 +174,7 @@ impl Page {
 			Self::Activity => {
 				"game activity playing osu status presence sharing registered games added current game detection detected process program executable rename wrong add hide last played"
 			}
+			Self::Quests => "quests rewards promotions games discover",
 			Self::Voice => {
 				"voice video camera preview audio microphone speakers devices volume gain noise suppression push to talk"
 			}
@@ -317,7 +342,7 @@ impl MessagingUi {
 	) {
 		let colors = design::palette_for(ctx);
 		let size = ctx.content_rect().size() - egui::vec2(32.0, 40.0);
-		let width = size.x.clamp(280.0, 1100.0);
+		let width = size.x.clamp(280.0, 1260.0);
 		let height = size.y.clamp(240.0, 820.0);
 		let wide = width >= 620.0;
 		let modal = egui::Modal::new(egui::Id::unique("user-settings"))
@@ -473,6 +498,7 @@ impl MessagingUi {
 										self.notification_settings(ui, state.demo)
 									}
 									Page::Activity => self.activity_settings(ui, state),
+									Page::Quests => self.quests_settings(ui),
 									Page::Voice => self.voice_settings_content(
 										ui,
 										state.demo,
@@ -545,7 +571,13 @@ impl MessagingUi {
 					)));
 					ui.add_space(2.0);
 					for page in visible {
-						if nav_item(ui, &page.label(language), self.settings.page == page).clicked()
+						if settings_page_item(
+							ui,
+							page.icon(),
+							&page.label(language),
+							self.settings.page == page,
+						)
+						.clicked()
 						{
 							if page == Page::MessagingPermissions && self.settings.page != page {
 								self.settings.messaging_permissions.requested = false;
@@ -1305,6 +1337,39 @@ impl MessagingUi {
 		self.registered_games_settings(ui, state.demo);
 	}
 
+	fn quests_settings(&mut self, ui: &mut egui::Ui) {
+		design::group(
+			ui,
+			&crate::i18n::translate("settings-quests-page-quest-home"),
+			|ui| {
+				design::row(
+					ui,
+					"settings-quests-open-discord-quest-home",
+					Some("settings-quests-availability-and-rewards-are-managed-in-discord"),
+					|ui| {
+						if design::button(
+							ui,
+							"settings-quests-open-discord",
+							design::ButtonKind::Outline,
+						)
+						.clicked()
+						{
+							ui.ctx()
+								.open_url(egui::OpenUrl::new_tab("https://discord.com/app"));
+						}
+					},
+				);
+				design::card_divider(ui);
+				design::hint(
+					ui,
+					&crate::i18n::translate(
+						"settings-quests-open-discord-and-choose-discover-then-quests",
+					),
+				);
+			},
+		);
+	}
+
 	fn storage_page(&mut self, ui: &mut egui::Ui, state: &State) {
 		design::group(
 			ui,
@@ -1512,6 +1577,24 @@ fn account_row(ui: &mut egui::Ui, label: &str, value: &str) {
 
 /// Sidebar entry in the settings modal; the selected page uses the strong surface and text.
 pub(super) fn nav_item(ui: &mut egui::Ui, label: &str, selected: bool) -> egui::Response {
+	nav_item_with_icon(ui, None, label, selected)
+}
+
+fn settings_page_item(
+	ui: &mut egui::Ui,
+	icon: icons::Icon,
+	label: &str,
+	selected: bool,
+) -> egui::Response {
+	nav_item_with_icon(ui, Some(icon), label, selected)
+}
+
+fn nav_item_with_icon(
+	ui: &mut egui::Ui,
+	icon: Option<icons::Icon>,
+	label: &str,
+	selected: bool,
+) -> egui::Response {
 	let label = crate::i18n::translate_if_key(label);
 	let colors = design::palette(ui);
 	let (rect, response) =
@@ -1562,17 +1645,34 @@ pub(super) fn nav_item(ui: &mut egui::Ui, label: &str, selected: bool) -> egui::
 	} else {
 		colors.muted
 	};
+	let text_left = if let Some(icon) = icon {
+		icons::paint(
+			ui.painter(),
+			icon,
+			egui::Rect::from_center_size(
+				egui::pos2(rect.left() + 22.0, rect.center().y),
+				egui::vec2(18.0, 18.0),
+			),
+			color,
+		);
+		40.0
+	} else {
+		12.0
+	};
 	// Long localized page names elide inside the row; hovering shows the full name.
 	let mut job = egui::text::LayoutJob::simple_singleline(
 		label.clone(),
 		egui::FontId::new(15.0, design::medium_family(ui.ctx())),
 		color,
 	);
-	job.wrap = egui::text::TextWrapping::truncate_at_width(rect.width() - 24.0);
+	job.wrap = egui::text::TextWrapping::truncate_at_width(rect.width() - text_left - 12.0);
 	let galley = ui.painter().layout_job(job);
 	let elided = galley.elided;
 	ui.painter().galley(
-		egui::pos2(rect.left() + 12.0, rect.center().y - galley.size().y / 2.0),
+		egui::pos2(
+			rect.left() + text_left,
+			rect.center().y - galley.size().y / 2.0,
+		),
 		galley,
 		color,
 	);

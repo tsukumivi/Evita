@@ -2,6 +2,7 @@ use crate::Id;
 use serde::{Deserialize, Serialize};
 pub const MAX_MESSAGE_STICKERS: usize = 3;
 pub const MAX_GUILD_STICKERS: usize = 500;
+pub const MAX_STICKER_FAVORITES: usize = 100;
 pub const MAX_STICKER_BYTES: usize = 512 * 1024;
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Sticker {

@@ -269,6 +269,7 @@ pub fn color_edit(ui: &mut egui::Ui, color: &mut [u8; 3]) -> egui::Response {
 				.range(0..=0xFFFFFF)
 				.hexadecimal(6, false, true)
 				.prefix("#")
+				.min_size(egui::vec2(82.0, 0.0))
 				.custom_parser(|text| parse_hex_color(text).map(f64::from))
 				.update_while_editing(false),
 		)
