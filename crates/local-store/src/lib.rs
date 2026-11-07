@@ -1613,7 +1613,7 @@ impl LocalStore {
 		account: Id,
 		favorites: &[model::Sticker],
 	) -> Result<()> {
-		let bytes = favorites.len() * size_of::<model::Sticker>()
+		let bytes = std::mem::size_of_val(favorites)
 			+ favorites
 				.iter()
 				.map(model::Sticker::heap_bytes)
