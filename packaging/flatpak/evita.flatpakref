@@ -1,5 +1,5 @@
 [Flatpak Ref]
-Name=cz.viceverse.evita
+Name=app.evita.client
 Branch=master
 Title=Evita
 Comment=Fast, secure and lightweight native Discord client

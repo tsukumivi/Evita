@@ -27,6 +27,10 @@ class PreparationTest(unittest.TestCase):
             manifest["modules"][0]["build-options"]["env"]["EVITA_RELEASES_URL"],
             "https://api.github.com/repos/tsukumivi/Evita/releases",
         )
+        install_command = manifest["modules"][0]["build-commands"][-1]
+        metainfo_path = install_command.split()[2]
+        self.assertTrue((build.ROOT / metainfo_path).is_file())
+        self.assertIn(f"Name={manifest['app-id']}", (build.ROOT / "packaging/flatpak/evita.flatpakref").read_text())
 
     def test_locked_sources_and_exact_compiler_exclude_untracked_data(self):
         self.prepare_fixture()
