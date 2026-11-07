@@ -26,7 +26,11 @@
       "buildsystem": "simple",
       "build-options": {
         "append-path": "/run/build/evita/flatpak-rust/bin",
-        "env": {"CARGO_NET_OFFLINE": "true", "CARGO_HOME": "/run/build/evita/flatpak-cargo-home"}
+        "env": {
+          "CARGO_NET_OFFLINE": "true",
+          "CARGO_HOME": "/run/build/evita/flatpak-cargo-home",
+          "EVITA_RELEASES_URL": "https://api.github.com/repos/tsukumivi/Evita/releases"
+        }
       },
       "build-commands": [
         "test \"$(rustc --version | cut -d ' ' -f 2)\" = 1.98.1",
