@@ -530,7 +530,7 @@ impl Editor {
 fn crop_dialog(ctx: &egui::Context, crop: &mut CropDraft) -> Option<CropDecision> {
 	let colors = design::palette_for(ctx);
 	let mut decision = None;
-	egui::Modal::new(egui::Id::new("profile-avatar-crop"))
+	egui::Modal::new(egui::Id::unique("profile-avatar-crop"))
 		.frame(
 			egui::Frame::new()
 				.fill(colors.chat)
