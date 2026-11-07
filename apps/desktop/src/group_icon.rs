@@ -15,6 +15,12 @@ use std::{
 type Scope = (u64, Id, u64);
 type Selected = Result<Option<(String, egui::ColorImage)>, &'static str>;
 const MAX_INPUT: usize = 8 * 1024 * 1024;
+#[derive(Clone, Copy)]
+struct IconRequest {
+	title: &'static str,
+	output_edge: u32,
+	square: bool,
+}
 struct Choosing {
 	scope: Scope,
 	result: mpsc::Receiver<Selected>,
@@ -34,7 +40,17 @@ impl GroupIcon {
 		title: &'static str,
 		output_edge: u32,
 	) -> Result<(), &'static str> {
-		self.start_with(scope, runtime, context, parent, title, output_edge, true)
+		self.start_with(
+			scope,
+			runtime,
+			context,
+			parent,
+			IconRequest {
+				title,
+				output_edge,
+				square: true,
+			},
+		)
 	}
 	pub fn start_profile(
 		&mut self,
@@ -45,7 +61,17 @@ impl GroupIcon {
 		title: &'static str,
 		output_edge: u32,
 	) -> Result<(), &'static str> {
-		self.start_with(scope, runtime, context, parent, title, output_edge, false)
+		self.start_with(
+			scope,
+			runtime,
+			context,
+			parent,
+			IconRequest {
+				title,
+				output_edge,
+				square: false,
+			},
+		)
 	}
 	fn start_with(
 		&mut self,
@@ -53,14 +79,12 @@ impl GroupIcon {
 		runtime: &tokio::runtime::Handle,
 		context: &egui::Context,
 		parent: Arc<winit::window::Window>,
-		title: &'static str,
-		output_edge: u32,
-		square: bool,
+		request: IconRequest,
 	) -> Result<(), &'static str> {
 		if self.choosing.is_some() {
 			return Err("Close the previous image picker first");
 		}
-		let dialog = platform::save::icon_source(parent, title);
+		let dialog = platform::save::icon_source(parent, request.title);
 		let (send, result) = mpsc::sync_channel(1);
 		let cancelled = Arc::new(AtomicBool::new(false));
 		let flag = cancelled.clone();
@@ -73,7 +97,7 @@ impl GroupIcon {
 						if decode_flag.load(Ordering::Acquire) {
 							Ok(None)
 						} else {
-							read(&path, output_edge, square).map(Some)
+							read(&path, request.output_edge, request.square).map(Some)
 						}
 					})
 					.await
@@ -153,10 +177,6 @@ fn read(
 		.read_to_end(&mut bytes)
 		.map_err(|_| "Could not read the chosen image")?;
 	decode_image(&bytes, output_edge, square)
-}
-
-fn decode(bytes: &[u8], output_edge: u32) -> Result<(String, egui::ColorImage), &'static str> {
-	decode_image(bytes, output_edge, true)
 }
 
 pub(crate) fn decode_image(
@@ -243,16 +263,16 @@ mod tests {
 		))
 		.write_to(&mut png, image::ImageFormat::Png)
 		.unwrap();
-		let (uri, preview) = decode(png.get_ref(), 256).unwrap();
+		let (uri, preview) = decode_image(png.get_ref(), 256, true).unwrap();
 		assert_eq!(preview.size, [256, 256]);
 		assert!(uri.starts_with("data:image/png;base64,"));
-		assert!(decode(b"invalid", 256).is_err());
-		assert!(decode(&vec![0; MAX_INPUT + 1], 256).is_err());
+		assert!(decode_image(b"invalid", 256, true).is_err());
+		assert!(decode_image(&vec![0; MAX_INPUT + 1], 256, true).is_err());
 		png = Cursor::new(Vec::new());
 		image::DynamicImage::new_rgba8(4097, 1)
 			.write_to(&mut png, image::ImageFormat::Png)
 			.unwrap();
-		assert!(decode(png.get_ref(), 256).is_err());
+		assert!(decode_image(png.get_ref(), 256, true).is_err());
 	}
 	#[test]
 	fn stale_picker_retains_single_slot_until_completion_and_discards_result() {
