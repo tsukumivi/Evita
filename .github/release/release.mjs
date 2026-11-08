@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { appendFileSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { execFileSync } from 'node:child_process';
 import semanticRelease from 'semantic-release';
@@ -37,6 +37,10 @@ const gh = args => execFileSync('gh', args, {
 // through the same contents:write token that publishes the release assets.
 function publishCask() {
   const asset = `release-assets/evita-${plan.gitTag}-macOS-ARM64.zip`;
+  if (!existsSync(asset)) {
+    console.log('Skipping Homebrew cask update because no signed macOS ARM64 archive was produced.');
+    return;
+  }
   const checksum = createHash('sha256').update(readFileSync(asset)).digest('hex');
   const repository = process.env.GITHUB_REPOSITORY;
   assert(repository, 'GITHUB_REPOSITORY is required to update the Evita cask');

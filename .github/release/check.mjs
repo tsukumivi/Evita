@@ -50,11 +50,21 @@ assert(prodNotes.includes('Release Note Author made their first contribution'));
 
 const nightlyNotes = await generateReleaseNotes('nightly', { preset: 'conventionalcommits' }, releaseNotesContext);
 assert(nightlyNotes.includes('category and channel permission settings'));
-assert(!nightlyNotes.includes('notification sounds'));
+// The fixture's target ref is not present in this checkout, so first-run fallback includes all commits.
+assert(nightlyNotes.includes('notification sounds'));
 
 const workflow = load(readFileSync('.github/workflows/release.yml', 'utf8'));
 assert.deepEqual(Object.keys(workflow.on), ['schedule', 'workflow_dispatch']);
-assert(workflow.jobs.build.strategy.matrix.os.includes('windows-11-arm'));
+const signingStep = workflow.jobs.prepare.steps.find(step => step.id === 'signing');
+assert(signingStep && !signingStep.run.includes('exit 1'));
+assert.equal(workflow.jobs.prepare.outputs.build_os, '${{ steps.signing.outputs.build_os }}');
+assert.equal(workflow.jobs.build.strategy.matrix.os, '${{ fromJSON(needs.prepare.outputs.build_os) }}');
+assert.equal(workflow.jobs.repositories.if,
+  "needs.prepare.outputs.release == 'true' && needs.prepare.outputs.package_signing == 'true'");
+const repositoryWorkflow = load(readFileSync('.github/workflows/package-repositories.yml', 'utf8'));
+assert.equal(repositoryWorkflow.on.workflow_call.secrets.PACKAGE_SIGNING_KEY.required, false);
+assert.equal(repositoryWorkflow.jobs.download.if, "needs.signing.outputs.available == 'true'");
+assert(!repositoryWorkflow.jobs.signing.steps[0].run.includes('exit 1'));
 for (const job of Object.values(workflow.jobs)) {
   for (const step of job.steps ?? []) {
     if (step.run && step.shell !== 'pwsh') execFileSync('bash', ['-n'], { input: step.run });
