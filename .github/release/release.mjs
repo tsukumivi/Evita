@@ -38,7 +38,7 @@ const gh = args => execFileSync('gh', args, {
 function publishCask() {
   const asset = `release-assets/evita-${plan.gitTag}-macOS-ARM64.zip`;
   if (!existsSync(asset)) {
-    console.log('Skipping Homebrew cask update because no signed macOS ARM64 archive was produced.');
+    console.log('Skipping Homebrew cask update because no macOS ARM64 archive was produced.');
     return;
   }
   const checksum = createHash('sha256').update(readFileSync(asset)).digest('hex');

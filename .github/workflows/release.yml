@@ -34,7 +34,6 @@ jobs:
       version: ${{ steps.version.outputs.version }}
       macos_signing: ${{ steps.signing.outputs.macos }}
       package_signing: ${{ steps.signing.outputs.packages }}
-      build_os: ${{ steps.signing.outputs.build_os }}
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -68,11 +67,9 @@ jobs:
             && -n "$MACOS_SIGNING_IDENTITY" && -n "$APPLE_ID" \
             && -n "$APPLE_TEAM_ID" && -n "$APPLE_APP_SPECIFIC_PASSWORD" ]]; then
             echo 'macos=true' >> "$GITHUB_OUTPUT"
-            echo 'build_os=["macos-latest","windows-latest","windows-11-arm"]' >> "$GITHUB_OUTPUT"
           else
             echo 'macos=false' >> "$GITHUB_OUTPUT"
-            echo 'build_os=["windows-latest","windows-11-arm"]' >> "$GITHUB_OUTPUT"
-            echo '::notice::Apple signing credentials are incomplete; the macOS release build will be skipped.'
+            echo '::notice::Apple signing credentials are incomplete; the macOS package will be unsigned and will not be notarized.'
           fi
           if [[ -n "$PACKAGE_SIGNING_KEY" && -n "$PACKAGE_SIGNING_FINGERPRINT" ]]; then
             echo 'packages=true' >> "$GITHUB_OUTPUT"
@@ -104,7 +101,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: ${{ fromJSON(needs.prepare.outputs.build_os) }}
+        os: [macos-latest, windows-latest, windows-11-arm]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
     env:
