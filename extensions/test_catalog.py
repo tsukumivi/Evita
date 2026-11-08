@@ -30,13 +30,8 @@ for data, mutate in (
         pass
     else:
         raise AssertionError("invalid extension accepted")
-# Pins are compared by content; a catalog pinned to another repository is always re-pinned.
+# Pins are compared by package content even when the source commit changes.
 pinned = json.loads((catalog.ROOT / "catalog.json").read_bytes())
-for entry in pinned["entries"]:
-    commit = entry["source_commit"]
-    for value in [entry] + ([entry["preview"]] if "preview" in entry else []):
-        key = "release_url" if value is entry else "url"
-        value[key] = value[key].replace("ViceVerse-cz/Serein-extensions/" + commit + "/", "ViceVerse-cz/Serein/" + commit + "/extensions/")
 moved = json.loads(json.dumps(pinned))
 for entry in moved["entries"]:
     old = entry["source_commit"]
@@ -44,8 +39,8 @@ for entry in moved["entries"]:
     for value in [entry] + ([entry["preview"]] if "preview" in entry else []):
         key = "release_url" if value is entry else "url"
         value[key] = value[key].replace(old, "f" * 40)
-assert catalog.content(pinned, "ViceVerse-cz/Serein") == catalog.content(moved, "ViceVerse-cz/Serein") is not None
-assert catalog.content(pinned, "ViceVerse-cz/Other") is None
+assert catalog.content(pinned, "tsukumivi/Evita") == catalog.content(moved, "tsukumivi/Evita") is not None
+assert catalog.content(pinned, "tsukumivi/Other") is None
 moved["entries"][0]["sha256"] = "0" * 64
-assert catalog.content(pinned, "ViceVerse-cz/Serein") != catalog.content(moved, "ViceVerse-cz/Serein")
+assert catalog.content(pinned, "tsukumivi/Evita") != catalog.content(moved, "tsukumivi/Evita")
 print("Theme/plugin identity, byte, capability, action and URL checks passed.")
