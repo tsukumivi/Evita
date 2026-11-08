@@ -21,6 +21,16 @@ class PreparationTest(unittest.TestCase):
         self.assertIn("Name=app.evita.client", ref)
         self.assertIn("Url=https://example.com/flatpak/repo", ref)
         self.assertIn("RuntimeRepo=https://flathub.org/repo/flathub.flatpakrepo", ref)
+        self.assertEqual(build.generate_flatpakref().split("Url=", 1)[1].splitlines()[0], build.DEFAULT_REPO_URL)
+        manifest = json.loads((build.ROOT / build.MANIFEST_PATH).read_text())
+        self.assertEqual(
+            manifest["modules"][0]["build-options"]["env"]["EVITA_RELEASES_URL"],
+            "https://api.github.com/repos/tsukumivi/Evita/releases",
+        )
+        install_command = manifest["modules"][0]["build-commands"][-1]
+        metainfo_path = install_command.split()[2]
+        self.assertTrue((build.ROOT / metainfo_path).is_file())
+        self.assertIn(f"Name={manifest['app-id']}", (build.ROOT / "packaging/flatpak/evita.flatpakref").read_text())
 
     def test_locked_sources_and_exact_compiler_exclude_untracked_data(self):
         self.prepare_fixture()
@@ -80,11 +90,12 @@ class PreparationTest(unittest.TestCase):
             (root / "private-untracked").write_text("must not copy")
             packaging = root / "packaging/flatpak"
             packaging.mkdir(parents=True)
-            manifest = json.loads((build.ROOT / "packaging/flatpak/app.evita.client.json").read_text())
-            (packaging / "app.evita.client.json").write_text(json.dumps(manifest))
+            manifest = json.loads((build.ROOT / build.MANIFEST_PATH).read_text())
+            manifest_name = build.MANIFEST_PATH.name
+            (packaging / manifest_name).write_text(json.dumps(manifest))
             subprocess.run(["git", "init", "--quiet", str(root)], check=True)
             subprocess.run(["git", "add", ".cargo/config.toml", "Cargo.lock", "rust-toolchain.toml",
-                            "packaging/flatpak/app.evita.client.json"], cwd=root, check=True)
+                            f"packaging/flatpak/{manifest_name}"], cwd=root, check=True)
             (packaging / "private-untracked").write_text("must not copy packaging secrets")
             initialized = root / "initialized-submodule"
             initialized.mkdir()
@@ -130,7 +141,7 @@ class PreparationTest(unittest.TestCase):
             self.assertFalse((source / "packaging/flatpak/private-untracked").exists())
             for name in ["initialized-submodule", "uninitialized-submodule", "missing-submodule"]:
                 self.assertFalse((source / name).exists())
-            self.assertEqual(json.loads((source / "packaging/flatpak/app.evita.client.json").read_text()), manifest)
+            self.assertEqual(json.loads((source / f"packaging/flatpak/{manifest_name}").read_text()), manifest)
             self.assertEqual((source / "Cargo.lock").read_text(), "locked fixture")
             self.assertTrue((source / "flatpak-rust/bin/rustc").is_file())
             config = (source / ".cargo/config.toml").read_text()

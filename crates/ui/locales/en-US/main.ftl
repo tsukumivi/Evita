@@ -15,6 +15,7 @@ page-chat = Chat
 page-messaging-permissions = Messaging Permissions
 page-notifications = Notifications
 page-registered-games = Registered Games
+page-quests = Quests
 page-voice = Voice & Video
 page-keybinds = Keybinds
 page-storage = Data & Privacy
@@ -29,6 +30,7 @@ description-chat = How messages, media, links and scrolling behave.
 description-messaging-permissions = Control who can contact you and how messages are filtered.
 description-notifications = Choose which notifications you receive and how they appear.
 description-registered-games = Share what you play, and fix or add the games Evita detects.
+description-quests = View available quests and rewards on Discord.
 description-voice = Microphone, speakers, camera and voice processing.
 description-keybinds = Keyboard shortcuts for Evita.
 description-storage = What Evita keeps on this device.
@@ -76,8 +78,8 @@ gpu-automatic-description = Let Evita choose the GPU that can draw this window.
 gpu-high-performance-description = Use the discrete graphics card when one is available.
 gpu-power-saving-description = Use integrated graphics to save battery.
 direct-messages = Direct Messages
-find-conversation = Find conversation
-find-conversation-tooltip = Search loaded conversations (Ctrl/Cmd+K)
+find-conversation = Find or start a conversation
+find-conversation-tooltip = Search loaded conversations or start a new one (Ctrl/Cmd+K)
 friends = Friends
 members = Members
 retry-shortcuts = Retry shortcuts
@@ -308,6 +310,7 @@ attachments-media-menu-unavailable-for-synthetic-attachments = Unavailable for s
 attachments-open-original-open-original = Open original…
 # Context: pending_card
 attachments-pending-card-remove-attachment = Remove attachment
+attachments-pending-card-preview-image = Preview image
 attachments-loading-card-preparing = Preparing…
 # Context: show_status
 attachments-show-status-cancel-download = Cancel download
@@ -2053,6 +2056,8 @@ profile-edit-form-use-default = Use default
 profile-edit-form-your-picture-will-be-removed-when-you-save = Your picture will be removed when you save.
 # Context: preview
 profile-edit-preview-about-me = About Me
+profile-edit-widgets-heading = Widgets · Board
+profile-edit-widgets-read-only = Board widgets are previewed here. Editing them is not supported yet.
 # Context: preview
 profile-edit-preview-change-profile-picture = Change profile picture
 # Context: preview
@@ -3392,6 +3397,11 @@ settings-account-page-signed-in-with-your-discord-account = Signed in with your 
 settings-activity-settings-detect-running-games-and-ask-discord-to-share-them-as = Detect running games and ask Discord to share them as activity.
 # Context: activity_settings
 settings-activity-settings-share-game-activity = Share game activity
+settings-quests-page-quest-home = Quest Home
+settings-quests-open-discord-quest-home = Open Discord Quest Home
+settings-quests-availability-and-rewards-are-managed-in-discord = Quest availability, progress, and rewards are managed by Discord.
+settings-quests-open-discord = Open Discord
+settings-quests-open-discord-and-choose-discover-then-quests = In Discord, choose Discover, then Quests. Quest availability depends on your account and region.
 # Context: activity_settings
 settings-activity-enable-on-discord = Enable on Discord
 # Context: activity_settings

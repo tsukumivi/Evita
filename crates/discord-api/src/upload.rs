@@ -119,6 +119,10 @@ impl Source {
 	pub fn size(&self) -> u64 {
 		self.size
 	}
+	/// Memory retained by an in-memory source clone; ordinary file sources retain only a path.
+	pub fn retained_memory_bytes(&self) -> u64 {
+		self.bytes.as_ref().map_or(0, |bytes| bytes.len() as u64)
+	}
 	/// Bytes this selection holds in session memory; chosen files hold only their metadata.
 	pub fn resident_bytes(&self) -> u64 {
 		self.bytes.as_ref().map_or(0, |bytes| bytes.len() as u64)

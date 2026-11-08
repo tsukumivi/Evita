@@ -68,9 +68,10 @@ jobs:
       - name: Build and inspect native package
         env:
           FORMAT: ${{ matrix.format }}
+          EVITA_RELEASES_URL: https://api.github.com/repos/tsukumivi/Evita/releases
         run: |
           chown -R builder:builder /home/builder "$GITHUB_WORKSPACE"
-          runuser -u builder -- env HOME=/home/builder bash <<'BUILD'
+          runuser -u builder -- env HOME=/home/builder EVITA_RELEASES_URL="$EVITA_RELEASES_URL" bash <<'BUILD'
             set -eu
             curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain none
             export PATH="$HOME/.cargo/bin:$PATH"
@@ -130,13 +131,15 @@ jobs:
       - name: Build AppImage including voice
         env:
           EVITA_RELEASE_TAG: ${{ inputs.release && inputs.tag || '' }}
+          EVITA_RELEASES_URL: https://api.github.com/repos/tsukumivi/Evita/releases
         run: |
           chown -R builder:builder /home/builder "$GITHUB_WORKSPACE"
-          runuser -u builder -- env HOME=/home/builder bash <<'BUILD'
+          runuser -u builder -- env HOME=/home/builder EVITA_RELEASE_TAG="$EVITA_RELEASE_TAG" EVITA_RELEASES_URL="$EVITA_RELEASES_URL" bash <<'BUILD'
             set -eu
             curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain none
             export PATH="$HOME/.cargo/bin:$PATH"
             rustup show active-toolchain
+            python3 -m unittest discover -s packaging/appimage -p 'test_*.py'
             bash packaging/appimage/install-tools.sh
             cargo xtask package --format appimage
           BUILD

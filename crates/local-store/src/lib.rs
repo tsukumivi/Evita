@@ -322,6 +322,7 @@ impl LocalStore {
             CREATE TABLE IF NOT EXISTS appearance(singleton INTEGER PRIMARY KEY CHECK(singleton=1),theme TEXT NOT NULL CHECK(theme IN ('light','dark')));
             CREATE TABLE IF NOT EXISTS theme_variant(singleton INTEGER PRIMARY KEY CHECK(singleton=1),variant TEXT NOT NULL CHECK(length(variant) BETWEEN 1 AND 32));
             CREATE TABLE IF NOT EXISTS gif_favorites(account TEXT NOT NULL,position INTEGER NOT NULL CHECK(typeof(position)='integer' AND position BETWEEN 0 AND 99),id TEXT NOT NULL CHECK(length(id) BETWEEN 1 AND 64),title TEXT NOT NULL CHECK(length(title) <= 256),url TEXT NOT NULL CHECK(length(url) BETWEEN 1 AND 512),preview TEXT NOT NULL CHECK(length(preview) BETWEEN 1 AND 512),width INTEGER NOT NULL CHECK(typeof(width)='integer' AND width BETWEEN 1 AND 4096),height INTEGER NOT NULL CHECK(typeof(height)='integer' AND height BETWEEN 1 AND 4096),PRIMARY KEY(account,position));
+            CREATE TABLE IF NOT EXISTS sticker_favorites(account TEXT NOT NULL,position INTEGER NOT NULL CHECK(typeof(position)='integer' AND position BETWEEN 0 AND 99),id TEXT NOT NULL CHECK(length(id) BETWEEN 1 AND 20),name TEXT NOT NULL CHECK(length(name) BETWEEN 1 AND 120),description TEXT NOT NULL CHECK(length(description) <= 4096),tags TEXT NOT NULL CHECK(length(tags) <= 1024),format_type INTEGER NOT NULL CHECK(format_type BETWEEN 0 AND 255),guild_id TEXT,pack_id TEXT,available INTEGER NOT NULL CHECK(available IN (0,1)),PRIMARY KEY(account,position),UNIQUE(account,id));
             ")?;
 		let has_avatar: bool = connection.query_row(
 			"SELECT EXISTS(SELECT 1 FROM pragma_table_info('messages') WHERE name='avatar')",
@@ -1548,6 +1549,125 @@ impl LocalStore {
 			)?;
 		}
 		transaction.commit()?;
+		Ok(())
+	}
+	/// Saved sticker favorites for one account, newest first. Invalid rows are ignored.
+	pub fn sticker_favorites(&self, account: Id) -> Result<Vec<model::Sticker>> {
+		let mut statement = self.0.prepare(
+			"SELECT id,name,description,tags,format_type,guild_id,pack_id,available FROM sticker_favorites WHERE account=?1 ORDER BY position LIMIT 100",
+		)?;
+		let rows = statement.query_map([account.to_string()], |row| {
+			Ok((
+				row.get::<_, String>(0)?,
+				row.get::<_, String>(1)?,
+				row.get::<_, String>(2)?,
+				row.get::<_, String>(3)?,
+				row.get::<_, u8>(4)?,
+				row.get::<_, Option<String>>(5)?,
+				row.get::<_, Option<String>>(6)?,
+				row.get::<_, bool>(7)?,
+			))
+		})?;
+		let mut favorites = Vec::new();
+		for row in rows {
+			let (id, name, description, tags, format_type, guild_id, pack_id, available) = row?;
+			let Ok(id) = id.parse() else { continue };
+			let guild_id = match guild_id {
+				Some(value) => match value.parse::<Id>() {
+					Ok(id) => Some(id),
+					Err(_) => continue,
+				},
+				None => None,
+			};
+			let pack_id = match pack_id {
+				Some(value) => match value.parse::<Id>() {
+					Ok(id) => Some(id),
+					Err(_) => continue,
+				},
+				None => None,
+			};
+			let sticker = model::Sticker {
+				id,
+				name,
+				description,
+				tags,
+				format_type,
+				guild_id,
+				pack_id,
+				available,
+			};
+			if sticker.valid()
+				&& !favorites
+					.iter()
+					.any(|known: &model::Sticker| known.id == sticker.id)
+				&& favorites.len() < model::MAX_STICKER_FAVORITES
+			{
+				favorites.push(sticker);
+			}
+		}
+		Ok(favorites)
+	}
+	/// Replaces the account's bounded favorite list atomically.
+	pub fn save_sticker_favorites(
+		&mut self,
+		account: Id,
+		favorites: &[model::Sticker],
+	) -> Result<()> {
+		let bytes = std::mem::size_of_val(favorites)
+			+ favorites
+				.iter()
+				.map(model::Sticker::heap_bytes)
+				.sum::<usize>();
+		if favorites.len() > model::MAX_STICKER_FAVORITES
+			|| bytes > 64 * 1024
+			|| !favorites.iter().all(model::Sticker::valid)
+			|| favorites
+				.iter()
+				.enumerate()
+				.any(|(i, sticker)| favorites[..i].iter().any(|known| known.id == sticker.id))
+		{
+			return Err(StoreError::Capacity);
+		}
+		let transaction = self.0.transaction()?;
+		transaction.execute(
+			"DELETE FROM sticker_favorites WHERE account=?1",
+			[account.to_string()],
+		)?;
+		for (position, sticker) in favorites.iter().enumerate() {
+			transaction.execute(
+				"INSERT INTO sticker_favorites VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",
+				rusqlite::params![
+					account.to_string(),
+					position as i64,
+					sticker.id.to_string(),
+					sticker.name,
+					sticker.description,
+					sticker.tags,
+					sticker.format_type,
+					sticker.guild_id.map(|id| id.to_string()),
+					sticker.pack_id.map(|id| id.to_string()),
+					sticker.available,
+				],
+			)?;
+		}
+		transaction.commit()?;
+		Ok(())
+	}
+	/// Updates cached author labels and avatars in every cached message for this account.
+	pub fn update_message_author(&mut self, account: Id, user: &model::User) -> Result<()> {
+		if user.id.0 == 0 || user.name.is_empty() || user.name.len() > 128 {
+			return Err(StoreError::Capacity);
+		}
+		self.0.execute(
+			"UPDATE messages SET name=?1,avatar=?2,discriminator=?3 WHERE account=?4 AND author=?5",
+			rusqlite::params![
+				user.name,
+				user.avatar,
+				user.discriminator,
+				account.to_string(),
+				user.id.to_string(),
+			],
+		)?;
 		Ok(())
 	}
 	/// Switcher roster, most recently used first. Damaged rows are skipped, never fatal.
@@ -2958,6 +3078,60 @@ mod tests {
 		assert!(store.gif_favorites(Id(2)).unwrap().is_empty());
 		store.save_gif_favorites(Id(1), &[]).unwrap();
 		assert!(store.gif_favorites(Id(1)).unwrap().is_empty());
+	}
+
+	#[test]
+	fn sticker_favorites_round_trip_and_remain_account_isolated() {
+		let mut store = LocalStore::initialize(Connection::open_in_memory().unwrap()).unwrap();
+		let sticker = model::Sticker {
+			id: Id(42),
+			name: "wave".into(),
+			description: "A synthetic favorite".into(),
+			tags: "wave,hello".into(),
+			format_type: 1,
+			guild_id: Some(Id(7)),
+			pack_id: Some(Id(9)),
+			available: true,
+		};
+		store
+			.save_sticker_favorites(Id(1), std::slice::from_ref(&sticker))
+			.unwrap();
+		assert_eq!(store.sticker_favorites(Id(1)).unwrap(), vec![sticker]);
+		assert!(store.sticker_favorites(Id(2)).unwrap().is_empty());
+		store.save_sticker_favorites(Id(1), &[]).unwrap();
+		assert!(store.sticker_favorites(Id(1)).unwrap().is_empty());
+	}
+
+	#[test]
+	fn user_profile_update_rewrites_cached_message_author_metadata() {
+		let mut store = LocalStore::initialize(Connection::open_in_memory().unwrap()).unwrap();
+		store
+			.0
+			.execute(
+				"INSERT INTO messages(account,channel,id,author,name,content,edited,reply,unsupported) VALUES(?1,?2,?3,?4,?5,?6,0,NULL,0)",
+				rusqlite::params!["1", "10", "20", "2", "Before", "cached message"],
+			)
+			.unwrap();
+		let updated = model::User {
+			kind: Default::default(),
+			webhook: false,
+			id: Id(2),
+			name: "After".into(),
+			avatar: Some("0123456789abcdef0123456789abcdef".into()),
+			discriminator: 4321,
+			primary_guild: None,
+			cosmetics: None,
+		};
+		store.update_message_author(Id(1), &updated).unwrap();
+		let cached: (String, Option<String>, u16) = store
+			.0
+			.query_row(
+				"SELECT name,avatar,discriminator FROM messages WHERE account='1' AND author='2'",
+				[],
+				|row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+			)
+			.unwrap();
+		assert_eq!(cached, ("After".into(), updated.avatar, 4321));
 	}
 
 	#[test]

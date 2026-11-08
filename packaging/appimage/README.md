@@ -1,7 +1,7 @@
 # Linux AppImage
 
 Download `evita-<version>-Linux-X64.AppImage` from
-[Releases](https://github.com/ViceVerse-cz/Serein/releases), keep it in a writable
+[Evita Releases](https://github.com/tsukumivi/Evita/releases), keep it in a writable
 directory, and make it executable:
 
 ```sh

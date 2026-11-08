@@ -13,6 +13,12 @@ struct Guild {
 	name: String,
 	icon: Option<String>,
 	banner: Option<String>,
+	#[serde(default)]
+	description: Option<String>,
+	#[serde(default)]
+	features: Vec<String>,
+	#[serde(default)]
+	clan: Option<model::ClanTag>,
 }
 #[derive(Deserialize)]
 struct Channel {
@@ -34,9 +40,21 @@ pub fn decode(bytes: &[u8]) -> Result<model::InvitePreview, crate::DecodeError> 
 		_ => None,
 	};
 	if let Some(guild) = invite.guild {
-		if guild.id.0 == 0 || guild.name.len() > 400 {
+		if guild.id.0 == 0 || guild.name.len() > 400 || guild.features.len() > 128 {
 			return Err(crate::DecodeError);
 		}
+		let clan = guild.clan.filter(|clan| {
+			clan.guild == guild.id
+				&& clan.tag.chars().count() == 4
+				&& clan
+					.badge
+					.as_ref()
+					.is_none_or(|badge| model::valid_avatar_hash(badge))
+		});
+		let description = guild
+			.description
+			.map(|description| description.chars().take(1024).collect::<String>())
+			.filter(|description| !description.is_empty());
 		let media = |hash: Option<String>, folder: &str| {
 			hash.filter(|h| model::valid_avatar_hash(h))
 				.map(|hash| model::EmbedMedia {
@@ -60,6 +78,10 @@ pub fn decode(bytes: &[u8]) -> Result<model::InvitePreview, crate::DecodeError> 
 				image: media(guild.banner, "banners"),
 				..Default::default()
 			},
+			guild_description: description,
+			verified: guild.features.iter().any(|feature| feature == "VERIFIED"),
+			community: guild.features.iter().any(|feature| feature == "COMMUNITY"),
+			clan,
 		})
 	} else if let Some(channel) = invite.channel {
 		if channel.id.0 == 0 {
@@ -92,6 +114,7 @@ pub fn decode(bytes: &[u8]) -> Result<model::InvitePreview, crate::DecodeError> 
 				image: None,
 				..Default::default()
 			},
+			..Default::default()
 		})
 	} else {
 		Err(crate::DecodeError)
@@ -167,5 +190,39 @@ mod tests {
 		assert_eq!(preview.embed.title.as_deref(), Some("Cool Group"));
 		assert_eq!(preview.embed.description.as_deref(), Some("5 members"));
 		assert!(preview.embed.thumbnail.is_some());
+	}
+
+	#[test]
+	fn guild_invites_keep_bounded_description_and_known_server_badges() {
+		let json = serde_json::json!({
+			"code": "community",
+			"guild": {
+				"id": "123456789012345678",
+				"name": "Synthetic Community",
+				"description": "A bounded server description",
+				"features": ["VERIFIED", "COMMUNITY"],
+				"clan": {
+					"guild": "123456789012345678",
+					"tag": "EVTA",
+					"badge": null
+				}
+			},
+			"approximate_presence_count": 12,
+			"approximate_member_count": 340
+		});
+		let preview = decode(&serde_json::to_vec(&json).unwrap()).unwrap();
+		assert!(preview.verified && preview.community);
+		assert_eq!(
+			preview.guild_description.as_deref(),
+			Some("A bounded server description")
+		);
+		assert_eq!(
+			preview.clan.as_ref().map(|clan| clan.tag.as_str()),
+			Some("EVTA")
+		);
+		assert_eq!(
+			preview.embed.description.as_deref(),
+			Some("● 12 online · 340 members")
+		);
 	}
 }

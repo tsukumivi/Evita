@@ -3,7 +3,7 @@
 The published plugins, built against the one [SDK](../sdk) that
 the [authoring guide](../../examples/extensions/README.md) documents. Any language
 producing compatible WebAssembly can use this ABI; Rust authors can call
-`serein_extension_sdk::export!(handler)`.
+`evita_extension_sdk::export!(handler)`.
 
 Build and package from `extensions/`, the workspace root (Python 3 is used only by the author):
 

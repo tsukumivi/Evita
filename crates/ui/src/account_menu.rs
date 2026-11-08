@@ -323,14 +323,14 @@ impl MessagingUi {
 			crate::i18n::translate("account-menu-account-switcher-switch-accounts"),
 			colors.muted,
 		));
-		ui.add_space(4.0);
+		ui.add_space(8.0);
 		for account in &others {
 			self.account_switcher_row(ui, account, state.demo);
 		}
 		let response = ui
 			.scope(|ui| {
 				let width = ui.available_width();
-				ui.spacing_mut().button_padding = vec2(34.0, 10.0);
+				ui.spacing_mut().button_padding = vec2(56.0, 8.0);
 				ui.add(
 					egui::Button::new(())
 						.left_text(
@@ -345,10 +345,15 @@ impl MessagingUi {
 						)
 						.frame_when_inactive(false)
 						.corner_radius(6)
-						.min_size(vec2(width, 40.0)),
+						.min_size(vec2(width, 48.0)),
 				)
 			})
 			.inner;
+		ui.painter().circle_filled(
+			egui::pos2(response.rect.left() + 18.0, response.rect.center().y),
+			16.0,
+			colors.raised,
+		);
 		icons::paint(
 			ui.painter(),
 			icons::Icon::Plus,
@@ -373,18 +378,18 @@ impl MessagingUi {
 	) {
 		let colors = design::palette(ui);
 		let (rect, _) =
-			ui.allocate_exact_size(vec2(ui.available_width(), 44.0), egui::Sense::hover());
+			ui.allocate_exact_size(vec2(ui.available_width(), 48.0), egui::Sense::hover());
 		let bin = egui::Rect::from_center_size(
 			egui::pos2(rect.right() - 20.0, rect.center().y),
 			egui::Vec2::splat(28.0),
 		);
 		let user = account.user();
 		let avatar = egui::Rect::from_center_size(
-			egui::pos2(rect.left() + 22.0, rect.center().y),
+			egui::pos2(rect.left() + 24.0, rect.center().y),
 			egui::Vec2::splat(32.0),
 		);
 		let text = egui::Rect::from_min_max(
-			egui::pos2(rect.left() + 48.0, rect.top() + 3.0),
+			egui::pos2(rect.left() + 52.0, rect.top() + 4.0),
 			egui::pos2(bin.left() - 8.0, rect.bottom() - 3.0),
 		);
 		let over_bin = ui.rect_contains_pointer(bin);
@@ -395,7 +400,7 @@ impl MessagingUi {
 			self.avatars.show_plain(ui, &user, 32.0, demo);
 		});
 		ui.scope_builder(egui::UiBuilder::new().max_rect(text), |ui| {
-			ui.spacing_mut().item_spacing.y = 0.0;
+			ui.spacing_mut().item_spacing.y = 2.0;
 			ui.add(
 				egui::Label::new(
 					design::medium(ui, account.label(), 14.0).color(colors.text_strong),

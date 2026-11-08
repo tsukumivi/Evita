@@ -29,7 +29,7 @@ use windows::{
 	core::{GUID, HRESULT, Interface, Ref, implement},
 };
 
-const MAX_BYTES: usize = 16 * 1024 * 1024;
+const MAX_BYTES: usize = super::MAX_BYTES;
 const MAX_SECONDS: f64 = 2.0 * 60.0 * 60.0;
 const VIDEO: u32 = MF_SOURCE_READER_FIRST_VIDEO_STREAM.0 as u32;
 const ALL: u32 = MF_SOURCE_READER_ALL_STREAMS.0 as u32;
@@ -632,14 +632,7 @@ fn dimensions(media: &IMFMediaType) -> Result<(u32, u32), &'static str> {
 	// SAFETY: Reading an integer attribute from a live media type.
 	let size = unsafe { media.GetUINT64(&MF_MT_FRAME_SIZE) }.map_err(|_| INVALID)?;
 	let (width, height) = ((size >> 32) as u32, size as u32);
-	if width == 0
-		|| height == 0
-		|| width > 1920
-		|| height > 1920
-		|| u64::from(width) * u64::from(height) > 1920 * 1080
-	{
-		return Err("Inline playback supports videos up to 1080p.");
-	}
+	super::check_dimensions(width, height)?;
 	Ok((width, height))
 }
 

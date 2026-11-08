@@ -27,6 +27,7 @@ pub mod polls;
 pub mod preload;
 pub mod presence;
 pub mod profile;
+pub mod quests;
 pub mod reactions;
 pub mod read_state;
 mod replies;
@@ -74,6 +75,9 @@ pub const EVENT_SLOTS: usize = 8; // UI drain batch; reliable events share a 32 
 pub const COMMAND_SLOTS: usize = 16; // ordinary commands <=16 KiB; bulk DM settings <=33 KiB; channel edit <=128 KiB; group icon <=350 KiB
 
 pub enum Command {
+	Quests {
+		request: u64,
+	},
 	Polls(polls::Request),
 	StickerPacks,
 	Sticker(Id),
@@ -456,6 +460,10 @@ fn prepare_navigation(
 	Ok(permission_state)
 }
 pub enum Event {
+	Quests {
+		request: u64,
+		result: Result<Vec<model::Quest>, auth::Failure>,
+	},
 	Polls(polls::Event),
 	StickerEntitlement {
 		user: Id,
@@ -804,6 +812,7 @@ pub struct State {
 	/// Device preference for which profile cosmetics are shown and loaded.
 	pub profile_cosmetics: model::CosmeticPreferences,
 	pub own_profile: profile::OwnProfile,
+	pub quests: quests::Quests,
 	pub badge_editor: profile::BadgeEditor,
 	pub invites: invites::Cache,
 	pub invite_join: invites::Join,
@@ -1039,6 +1048,7 @@ impl Default for State {
 			profile_cache: Default::default(),
 			profile_cosmetics: Default::default(),
 			own_profile: Default::default(),
+			quests: quests::Quests::default(),
 			badge_editor: Default::default(),
 			invites: Default::default(),
 			invite_join: Default::default(),
@@ -2107,6 +2117,10 @@ impl State {
 			return;
 		}
 		match &command {
+			Command::Quests { request } => {
+				self.quests.apply(*request, Err(auth::Failure::Capacity));
+				return;
+			}
 			Command::ApplicationCommands {
 				channel, request, ..
 			} => {
@@ -2342,6 +2356,10 @@ impl State {
 		}
 		if let Command::GifFavorites { request, .. } = command {
 			self.apply_gif_favorites(request, Err(auth::Failure::Capacity));
+			return;
+		}
+		if let Command::Quests { request } = command {
+			self.quests.apply(request, Err(auth::Failure::Capacity));
 			return;
 		}
 		if let Command::Edit {
@@ -2853,6 +2871,10 @@ impl State {
 			_ => None,
 		};
 		let result = match envelope.event {
+			Event::Quests { request, result } => {
+				self.quests.apply(request, result);
+				Ok(())
+			}
 			Event::Startup(_) => {
 				unreachable!("startup is applied atomically before ordinary events")
 			}
@@ -4578,6 +4600,9 @@ impl Event {
 					result.as_ref().map_or(0, |r| model::reaction_bytes(r))
 				}
 				Self::GuildJoined(guild) => guild.bytes(),
+				Self::Quests {
+					result: Ok(items), ..
+				} => items.iter().map(model::Quest::bytes).sum(),
 				Self::Invite { code, result } => {
 					code.capacity() + result.as_ref().map_or(0, |embed| embed.bytes())
 				}

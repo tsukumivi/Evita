@@ -25,6 +25,8 @@ pub use time_format::TimeFormat;
 pub mod guild_folders;
 pub mod message_options;
 pub mod permissions;
+mod quests;
+pub use quests::Quest;
 mod reading_preferences;
 pub mod server_admin;
 pub mod server_audit_log;
@@ -293,15 +295,25 @@ impl JoinedTarget {
 		}
 	}
 }
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct InvitePreview {
 	pub guild: Option<Id>,
 	pub channel: Option<Id>,
 	pub embed: Embed,
+	/// Optional details present on a guild invite response; absent fields stay unknown.
+	pub guild_description: Option<String>,
+	pub verified: bool,
+	pub community: bool,
+	pub clan: Option<ClanTag>,
 }
 impl InvitePreview {
 	pub fn bytes(&self) -> usize {
-		size_of::<Self>() - size_of::<Embed>() + self.embed.bytes()
+		size_of::<Self>() - size_of::<Embed>()
+			+ self.embed.bytes()
+			+ self.guild_description.as_ref().map_or(0, String::capacity)
+			+ self.clan.as_ref().map_or(0, |clan| {
+				clan.tag.capacity() + clan.badge.as_ref().map_or(0, String::capacity)
+			})
 	}
 }
 #[derive(Clone, PartialEq, Eq)]

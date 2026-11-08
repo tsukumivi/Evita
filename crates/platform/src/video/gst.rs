@@ -657,7 +657,7 @@ mod tests {
 	}
 
 	#[test]
-	fn live_uhd_samples_copy_planes_but_inline_and_oversized_samples_stay_bounded() {
+	fn live_and_inline_uhd_samples_copy_planes_and_oversized_samples_stay_bounded() {
 		gst::init().unwrap();
 		let info = gst_video::VideoInfo::builder(gst_video::VideoFormat::I420, 3840, 2160)
 			.build()
@@ -669,7 +669,9 @@ mod tests {
 			.caps(&info.to_caps().unwrap())
 			.buffer(&gst::Buffer::from_slice(bytes))
 			.build();
-		assert!(picture(&sample, super::super::check_dimensions).is_err());
+		let inline = picture(&sample, super::super::check_dimensions).unwrap();
+		assert_eq!((inline.width, inline.height), (3840, 2160));
+		assert!(inline.is_valid());
 		let decoded = picture(&sample, super::super::check_live_dimensions).unwrap();
 		assert_eq!((decoded.width, decoded.height), (3840, 2160));
 		assert!(decoded.is_valid());
@@ -683,10 +685,8 @@ mod tests {
 				.to_caps()
 				.unwrap();
 			let sample = gst::Sample::builder().caps(&caps).build();
-			assert_eq!(
-				picture(&sample, super::super::check_live_dimensions),
-				Err("Live playback supports videos up to 4K (3840×2160).")
-			);
+			assert!(picture(&sample, super::super::check_dimensions).is_err());
+			assert!(picture(&sample, super::super::check_live_dimensions).is_err());
 		}
 	}
 

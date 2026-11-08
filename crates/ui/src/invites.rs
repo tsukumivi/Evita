@@ -409,6 +409,7 @@ mod tests {
 						description: Some("● 12 online · 340 members".into()),
 						..Default::default()
 					},
+					..Default::default()
 				})),
 			),
 		);

@@ -3589,7 +3589,9 @@ impl Desktop {
 				&& !self.fixture_only
 				&& self.connection.is_some();
 			if available
-				&& let Some(source) = self.uploads.take_source(self.state.generation, channel)
+				&& let Some(source) =
+					self.uploads
+						.take_source_for_message(self.state.generation, channel, nonce)
 			{
 				let (progress, receive) =
 					tokio::sync::watch::channel(discord_api::upload::Status::Preparing);
@@ -4338,6 +4340,11 @@ impl Desktop {
 					request,
 					result: Ok(self.state.gifs.favorites.clone()),
 				},
+				// The offline fixture has no authenticated Discord quests.
+				Command::Quests { request } => Event::Quests {
+					request,
+					result: Ok(Vec::new()),
+				},
 				Command::CreateGuild { sequence, .. } => Event::GuildCreated {
 					sequence,
 					result: Err(Failure::ProtocolAt("Server creation unavailable offline")),
@@ -4945,6 +4952,9 @@ impl Desktop {
 				cache::Outcome::GifFavorites(favorites) => {
 					self.state.restore_gif_favorites(favorites);
 				}
+				cache::Outcome::StickerFavorites(favorites) => {
+					self.state.restore_sticker_favorites(favorites);
+				}
 				cache::Outcome::Drafts(drafts) => {
 					for (channel, content) in drafts {
 						if !self
@@ -5258,6 +5268,15 @@ impl Desktop {
 			} else {
 				Vec::new()
 			};
+			if !self.state.demo
+				&& !self.fixture_only
+				&& let Event::UserAction(client_core::user_actions::Event::FriendProfile((user, _))) =
+					&event.event
+			{
+				self.queue_cache(cache::Operation::UpdateMessageAuthor(Box::new(
+					user.clone(),
+				)));
+			}
 			if event.generation == self.state.generation
 				&& (event.event.changes_access()
 					|| matches!(event.event, Event::Disconnected)
@@ -5267,6 +5286,13 @@ impl Desktop {
 				self.extensions.access_changed(&mut self.messaging);
 			}
 			log_session_event(&event.event);
+			if let Event::SendResult { nonce, result } = &event.event {
+				self.uploads.finish_message(
+					nonce,
+					result.is_ok(),
+					matches!(result, Err(Failure::Ambiguous)),
+				);
+			}
 			self.state.apply(event);
 			if let Some(message) = takeover_notice {
 				self.messaging
@@ -5323,6 +5349,7 @@ impl Desktop {
 					self.messaging.draft_restore_pending =
 						self.queue_cache(cache::Operation::LoadDrafts);
 					self.queue_cache(cache::Operation::LoadGifFavorites);
+					self.queue_cache(cache::Operation::LoadStickerFavorites);
 				}
 				if !self.messaging.channel_preferences_loaded
 					&& !self.messaging.channel_preferences_load_pending
@@ -6593,6 +6620,61 @@ impl eframe::App for Desktop {
 				// The timeline row cancels its own upload, not files loading for the next message.
 				self.uploads.cancel_transfer();
 			}
+			if let Some(nonce) = self.messaging.discard_retry_upload_requested.take() {
+				self.uploads.discard_failed_send(&nonce);
+			}
+			if let Some(nonce) = self.messaging.retry_pending_requested.take() {
+				let retry = self.state.pending.iter().position(|pending| {
+					pending.nonce == nonce
+						&& pending.delivery == model::Delivery::Rejected
+						&& !pending.attachments.is_empty()
+				});
+				if let Some(index) = retry {
+					let pending = &self.state.pending[index];
+					let channel = pending.channel;
+					let can_restore = self.state.selected == Some(channel)
+						&& self.state.can_send(channel)
+						&& self.state.can_attach(channel)
+						&& (self.state.drafts.get(&channel).is_none_or(String::is_empty))
+						&& (self.state.drafts.contains_key(&channel)
+							|| self.state.drafts.len() < 64)
+						&& !pending.reply_conflicts(self.state.reply);
+					if !can_restore {
+						self.messaging.toasts.push(
+							ui::design::Level::Error,
+							"Clear the current draft or reply before retrying this message",
+						);
+					} else {
+						match self.uploads.restore_failed_send(
+							&nonce,
+							self.state.generation,
+							channel,
+							self.runtime.handle(),
+							&ctx,
+						) {
+							Ok(()) => {
+								self.messaging.restore_pending_for_retry(
+									&mut self.state,
+									channel,
+									&nonce,
+								);
+								self.messaging.toasts.push(
+									ui::design::Level::Info,
+									"Files restored. Review the message and press Send to retry",
+								);
+							}
+							Err(error) => {
+								self.messaging.toasts.push(ui::design::Level::Error, error)
+							}
+						}
+					}
+				} else {
+					self.messaging.toasts.push(
+						ui::design::Level::Error,
+						"Only a message confirmed as not sent can be retried",
+					);
+				}
+			}
 			if let Some((generation, channel, assets, draft)) =
 				self.messaging.image_share_requested.take()
 				&& generation == self.state.generation
@@ -6688,13 +6770,13 @@ impl eframe::App for Desktop {
 				{
 					Err("Sign in before changing your profile picture")
 				} else {
-					self.profile_avatar.start(
+					self.profile_avatar.start_profile(
 						scope,
 						self.runtime.handle(),
 						&ctx,
 						self.window.clone(),
 						"Choose profile picture",
-						256,
+						512,
 					)
 				};
 				if let Err(error) = result {
@@ -6945,6 +7027,10 @@ impl eframe::App for Desktop {
 		if std::mem::take(&mut self.state.gifs.favorites_changed) {
 			let favorites = self.state.gifs.favorites.clone();
 			self.queue_cache(cache::Operation::SaveGifFavorites(favorites));
+		}
+		if std::mem::take(&mut self.state.stickers.favorites_changed) {
+			let favorites = self.state.stickers.favorites.clone();
+			self.queue_cache(cache::Operation::SaveStickerFavorites(favorites));
 		}
 		if !self.fixture_only
 			&& !self.state.demo

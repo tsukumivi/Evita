@@ -1348,6 +1348,47 @@ impl State {
 				}
 			}
 			Event::FriendProfile(profile) => {
+				let (updated, username) = &profile;
+				let user_id = updated.id;
+				let apply = |view: &mut model::UserProfile| {
+					if view.user.id == user_id {
+						view.user = updated.clone();
+						view.username.clone_from(username);
+					}
+				};
+				if self
+					.user
+					.as_ref()
+					.is_some_and(|current| current.id == user_id)
+				{
+					self.user = Some(updated.clone());
+				}
+				if let Some(view) = self.profile.as_mut().and_then(|view| view.data.as_mut()) {
+					apply(view);
+				}
+				if let Some(view) = self.own_profile.data.as_mut() {
+					apply(view);
+				}
+				self.profile_cache.update(user_id, apply);
+				self.timeline.update_author(updated);
+				for channel in &mut self.channels {
+					for recipient in &mut channel.recipients {
+						if recipient.id == user_id && !recipient.webhook {
+							*recipient = updated.clone();
+							self.navigation_index.bytes.set(None);
+						}
+					}
+				}
+				if let Some(members) = &mut self.members {
+					for member in members.slots.iter_mut().flatten() {
+						if let model::MemberSlot::Person(member) = member
+							&& member.user.id == user_id
+							&& !member.user.webhook
+						{
+							member.user = updated.clone();
+						}
+					}
+				}
 				if let Some((_, _, ignored)) = self.user_actions.restricted.get(&profile.0.id) {
 					let ignored = *ignored;
 					let user = profile.0.id;
@@ -2796,6 +2837,30 @@ mod tests {
 			}],
 			..State::default()
 		}
+	}
+	#[test]
+	fn gateway_user_profile_updates_replace_self_and_open_dm_recipient() {
+		let mut state = state();
+		let mut own = state.user.clone().unwrap();
+		own.name = "Updated self".into();
+		own.avatar = Some("0123456789abcdef0123456789abcdef".into());
+		state
+			.apply_user_action(Event::FriendProfile((own.clone(), "updated_self".into())))
+			.unwrap();
+		assert_eq!(state.user.as_ref().unwrap().name, "Updated self");
+		assert_eq!(state.user.as_ref().unwrap().avatar, own.avatar);
+
+		let mut recipient = state.channels[0].recipients[0].clone();
+		recipient.name = "Updated recipient".into();
+		recipient.avatar = Some("abcdef0123456789abcdef0123456789".into());
+		state
+			.apply_user_action(Event::FriendProfile((
+				recipient.clone(),
+				"updated_recipient".into(),
+			)))
+			.unwrap();
+		assert_eq!(state.channels[0].recipients[0].name, "Updated recipient");
+		assert_eq!(state.channels[0].recipients[0].avatar, recipient.avatar);
 	}
 	/// Completes a pending write with the given result.
 	fn finish(state: &mut State, command: Command, result: Result<(), Failure>) {

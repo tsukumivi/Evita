@@ -1035,10 +1035,11 @@ pub(crate) fn presence_color(status: &str) -> Color32 {
 /// lower-right rim; list avatars keep a thin ring in the corner.
 fn presence_badge_metrics(rect: Rect) -> (f32, f32, egui::Pos2) {
 	let (radius, ring, inset) = if rect.width() >= AVATAR {
-		(rect.width() * 0.12, 4.0, rect.width() * 0.15)
+		let radius = (rect.width() * 0.075).clamp(5.0, 8.0);
+		(radius, 2.0, radius + 1.0)
 	} else {
-		let radius = (rect.width() * 0.17).clamp(5.0, 10.0);
-		(radius, 2.0, radius + 0.5)
+		let radius = (rect.width() * 0.15).clamp(4.0, 6.0);
+		(radius, 2.0, radius + 1.0)
 	};
 	(radius, ring, rect.right_bottom() - Vec2::splat(inset))
 }
@@ -2157,6 +2158,86 @@ fn board_game(
 		ui.advance_cursor_after_rect(text.min_rect());
 	});
 }
+
+/// Read-only widgets shown beside the account's editable profile preview.
+pub(super) fn board_widgets_readonly(
+	ui: &mut egui::Ui,
+	profile: &model::UserProfile,
+	avatars: &mut Avatars,
+	demo: bool,
+) {
+	let colors = design::palette(ui);
+	let theme = Theme::new(&colors, None);
+	ui.label(design::eyebrow(
+		ui,
+		crate::i18n::translate("profile-edit-widgets-heading"),
+		colors.muted,
+	));
+	ui.add_space(4.0);
+	ui.label(
+		egui::RichText::new(crate::i18n::translate("profile-edit-widgets-read-only"))
+			.size(12.0)
+			.color(colors.muted),
+	);
+	ui.add_space(10.0);
+	let Some(board) = profile.board.as_ref() else {
+		ui.label(crate::i18n::translate("profiles-board-unavailable"));
+		return;
+	};
+	if board.iter().all(|widget| widget.games.is_empty()) {
+		ui.label(crate::i18n::translate("profiles-board-empty"));
+	}
+	for (index, widget) in board
+		.iter()
+		.enumerate()
+		.filter(|(_, widget)| !widget.games.is_empty())
+	{
+		let id = ui
+			.scope_id()
+			.with(("profile-edit-board-expanded", profile.user.id, index));
+		let expanded = ui.data(|data| data.get_temp::<bool>(id)).unwrap_or(false);
+		egui::Frame::new()
+			.fill(theme.panel)
+			.corner_radius(12)
+			.inner_margin(12)
+			.show(ui, |ui| {
+				ui.set_width(ui.available_width());
+				ui.spacing_mut().item_spacing.y = 10.0;
+				ui.label(
+					egui::RichText::new(widget.kind.title())
+						.strong()
+						.size(14.0)
+						.color(theme.text),
+				);
+				for game in widget
+					.games
+					.iter()
+					.take(if expanded { usize::MAX } else { 3 })
+				{
+					board_game(ui, game, avatars, demo, &theme);
+				}
+				if widget.games.len() > 3 {
+					let key = if expanded {
+						"profiles-board-show-less"
+					} else {
+						"profiles-board-show-more"
+					};
+					let response = ui.add(
+						egui::Label::new(
+							RichText::new(crate::i18n::translate(key))
+								.size(13.0)
+								.color(theme.muted),
+						)
+						.sense(egui::Sense::click()),
+					);
+					if response.clicked() {
+						ui.data_mut(|data| data.insert_temp(id, !expanded));
+					}
+				}
+			});
+		ui.add_space(8.0);
+	}
+}
 fn board_text(ui: &mut egui::Ui, game: &model::ProfileGame, name: &str, theme: &Theme) {
 	ui.spacing_mut().item_spacing.y = 8.0;
 	ui.add(egui::Label::new(RichText::new(name).size(17.0).strong().color(theme.text)).wrap());
@@ -2233,6 +2314,7 @@ pub(crate) fn debug_activity_panel(state: &State) {
 			full_panel(
 				ui,
 				&mut FullTab::Activity,
+				false,
 				None,
 				None,
 				state,
@@ -2277,6 +2359,7 @@ enum FullTab {
 fn full_panel(
 	ui: &mut egui::Ui,
 	tab: &mut FullTab,
+	own: bool,
 	data: Option<&model::UserProfile>,
 	view: Option<&ProfileView>,
 	state: &State,
@@ -2285,32 +2368,40 @@ fn full_panel(
 	theme: &Theme,
 ) -> Option<Action> {
 	let mut action = None;
+	if own && matches!(*tab, FullTab::Friends | FullTab::Servers) {
+		*tab = FullTab::Board;
+	}
 	// Text tabs with an underline, sharing one baseline rule, rather than filled pills.
 	let tabs = ui.horizontal_wrapped(|ui| {
 		ui.spacing_mut().item_spacing = vec2(28.0, 8.0);
-		for (value, label) in [
+		let mut tabs = vec![
 			(FullTab::Board, crate::i18n::translate("profiles-board")),
 			(
 				FullTab::Activity,
 				sentence(&crate::i18n::translate("profiles-show-activity")),
 			),
-			(
-				FullTab::Friends,
-				format!(
-					"{} {}",
-					data.map_or(0, |p| p.mutual_friends.len()),
-					crate::i18n::translate("profiles-show-mutual-friends")
+		];
+		if !own {
+			tabs.extend([
+				(
+					FullTab::Friends,
+					format!(
+						"{} {}",
+						data.map_or(0, |p| p.mutual_friends.len()),
+						crate::i18n::translate("profiles-show-mutual-friends")
+					),
 				),
-			),
-			(
-				FullTab::Servers,
-				format!(
-					"{} {}",
-					data.map_or(0, |p| p.mutual_guilds.len()),
-					crate::i18n::translate("profiles-show-mutual-servers")
+				(
+					FullTab::Servers,
+					format!(
+						"{} {}",
+						data.map_or(0, |p| p.mutual_guilds.len()),
+						crate::i18n::translate("profiles-show-mutual-servers")
+					),
 				),
-			),
-		] {
+			]);
+		}
+		for (value, label) in tabs {
 			let selected = *tab == value;
 			let galley = ui.painter().layout_no_wrap(
 				label.clone(),
@@ -4255,6 +4346,7 @@ fn card_view(
 										panel_action = full_panel(
 											ui,
 											&mut full_tab,
+											own_card,
 											data,
 											view,
 											state,
@@ -4276,6 +4368,7 @@ fn card_view(
 							panel_action = full_panel(
 								ui,
 								&mut full_tab,
+								own_card,
 								data,
 								view,
 								state,
@@ -4528,8 +4621,9 @@ fn paint_collectibles(
 	let clip = if let Some(panel) = dock_clip {
 		panel
 	} else if full {
-		let [_, _, side] = frame.overflow(card.width());
-		ui.clip_rect().expand2(vec2(side, 0.0))
+		let [top, bottom, side] = frame.overflow(card.width());
+		let clip = ui.clip_rect();
+		Rect::from_min_max(clip.min - vec2(side, top), clip.max + vec2(side, bottom))
 	} else {
 		ui.ctx().content_rect()
 	};
@@ -4683,6 +4777,38 @@ fn synthetic_frame() -> model::ProfileFrame {
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[test]
+	fn own_full_profile_hides_mutual_tabs_and_resets_to_board() {
+		let ctx = egui::Context::default();
+		let state = test_support::demo_state();
+		let user = state.user.clone().unwrap();
+		let profile = synthetic(&user, Some(Id(1)));
+		let mut tab = FullTab::Friends;
+		let mut avatars = Avatars::default();
+		let mut labels = String::new();
+		let output = ctx.run_ui(input(vec2(900.0, 600.0), vec![]), |ui| {
+			let theme = Theme::new(&design::palette(ui), None);
+			full_panel(
+				ui,
+				&mut tab,
+				true,
+				Some(&profile),
+				None,
+				&state,
+				&[],
+				&mut avatars,
+				&theme,
+			);
+		});
+		for shape in &output.shapes {
+			text(&shape.shape, &mut labels);
+		}
+		output.drop_without_applying_deltas();
+		assert!(tab == FullTab::Board);
+		assert!(!labels.contains(&crate::i18n::translate("profiles-show-mutual-friends")));
+		assert!(!labels.contains(&crate::i18n::translate("profiles-show-mutual-servers")));
+	}
 
 	#[test]
 	fn mixed_profile_gradients_keep_text_readable_at_and_between_endpoints() {

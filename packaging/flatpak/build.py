@@ -10,7 +10,8 @@ import tomllib
 
 
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_REPO_URL = "https://viceverse-cz.github.io/Serein/flatpak/repo"
+MANIFEST_PATH = Path("packaging/flatpak/cz.viceverse.evita.json")
+DEFAULT_REPO_URL = "https://tsukumivi.github.io/Evita/flatpak/repo"
 
 
 def output(*args, cwd=ROOT):
@@ -23,7 +24,7 @@ Name=app.evita.client
 Branch=master
 Title=Evita
 Comment=Fast, secure and lightweight native Discord client
-Icon=https://viceverse-cz.github.io/Serein/icons/evita.png
+Icon=https://tsukumivi.github.io/Evita/icons/evita.png
 Url={repo_url}
 RuntimeRepo=https://flathub.org/repo/flathub.flatpakrepo
 IsRuntime=false
@@ -36,7 +37,7 @@ def prepare(destination):
     pin = tomllib.loads((ROOT / "rust-toolchain.toml").read_text())["toolchain"]["channel"]
     sysroot = Path(output("rustup", "run", pin, "rustc", "--print", "sysroot"))
     version = output(str(sysroot / "bin/rustc"), "--version").split()[1]
-    manifest = json.loads((ROOT / "packaging/flatpak/app.evita.client.json").read_text())
+    manifest = json.loads((ROOT / MANIFEST_PATH).read_text())
     if version != pin or f"= {pin}" not in manifest["modules"][0]["build-commands"][0]:
         raise ValueError("Flatpak manifest and installed Rust must match rust-toolchain.toml")
     destination.mkdir(parents=True, exist_ok=False)
