@@ -1,6 +1,6 @@
 cask "evita" do
-  version "1.0.0"
-  sha256 "f0a98e08480fe98f295b4fb441b653e181cacaa3f4ae59cd3a2ea12d275d3b21"
+  version "1.0.1-nightly.20261108.4"
+  sha256 "5f17f31a39d978af98df18288364e7f5673eb9f088d547e15aeb10a50120acc3"
 
   url "https://github.com/tsukumivi/Evita/releases/download/v#{version}/evita-v#{version}-macOS-ARM64.zip"
   name "Evita"
