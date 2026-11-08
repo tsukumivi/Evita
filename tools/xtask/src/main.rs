@@ -208,9 +208,11 @@ fn package_windows(root: &std::path::Path, import_alias: Option<&str>) -> Result
 		let installer_dir = PathBuf::from("dist-installer");
 		std::fs::create_dir_all(&installer_dir).map_err(|e| e.to_string())?;
 		let version = env!("CARGO_PKG_VERSION");
+		let file_version = version.split('-').next().unwrap_or(version);
 		let mut arguments = vec![
 			"-NOCD".to_owned(),
-			format!("-DVERSION={version}"),
+			format!("-DEVITA_VERSION={version}"),
+			format!("-DEVITA_FILE_VERSION={file_version}.0"),
 			format!("-DDIST_DIR={}", root.display()),
 			format!("-DOUTPUT_DIR={}", installer_dir.display()),
 		];
