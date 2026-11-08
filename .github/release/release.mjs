@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { appendFileSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { execFileSync } from 'node:child_process';
 import semanticRelease from 'semantic-release';
@@ -15,17 +15,9 @@ assert(['nightly', 'production'].includes(channel), 'Choose nightly or productio
 const planPath = 'target/release-plan.json';
 const plan = mode === 'publish' ? JSON.parse(readFileSync(planPath, 'utf8')) : null;
 if (plan) assert.equal(channel, plan.channel, 'Release channel changed');
-const tapRepo = 'ViceVerse-cz/homebrew-serein';
-const caskPath = 'Casks/serein.rb';
-const tapToken = process.env.HOMEBREW_TAP_TOKEN;
-if (plan) assert(tapToken, 'HOMEBREW_TAP_TOKEN is required to publish the Homebrew cask');
-
-function checkTapAccess() {
-  const push = execFileSync('gh', ['api', `repos/${tapRepo}`, '--jq', '.permissions.push'], {
-    encoding: 'utf8', env: { ...process.env, GH_TOKEN: tapToken },
-  }).trim();
-  assert.equal(push, 'true', `HOMEBREW_TAP_TOKEN cannot push to ${tapRepo}`);
-}
+const caskPath = 'Casks/evita.rb';
+const githubToken = process.env.GH_TOKEN || process.env.GITHUB_TOKEN;
+if (plan) assert(githubToken, 'A GitHub token with contents:write is required to update the Evita cask');
 
 // A rerun after a failed cask update must not try to publish the release a second time.
 function releaseExists() {
@@ -37,17 +29,22 @@ function releaseExists() {
   }
 }
 const resumed = plan !== null && releaseExists();
-if (plan && !resumed) checkTapAccess();
+const gh = args => execFileSync('gh', args, {
+  encoding: 'utf8', env: { ...process.env, GH_TOKEN: githubToken },
+});
 
-// The cask lives in its own tap repository so users do not clone this one. The tap file is the
-// single source of truth; releases only rewrite its version and checksum.
+// Keep the Homebrew cask in this repository. Release publication updates its version and digest
+// through the same contents:write token that publishes the release assets.
 function publishCask() {
-  const asset = `release-assets/serein-${plan.gitTag}-macOS-ARM64.zip`;
+  const asset = `release-assets/evita-${plan.gitTag}-macOS-ARM64.zip`;
+  if (!existsSync(asset)) {
+    console.log('Skipping Homebrew cask update because no signed macOS ARM64 archive was produced.');
+    return;
+  }
   const checksum = createHash('sha256').update(readFileSync(asset)).digest('hex');
-  const gh = args => execFileSync('gh', args, {
-    encoding: 'utf8', env: { ...process.env, GH_TOKEN: tapToken },
-  });
-  const endpoint = `repos/${tapRepo}/contents/${caskPath}`;
+  const repository = process.env.GITHUB_REPOSITORY;
+  assert(repository, 'GITHUB_REPOSITORY is required to update the Evita cask');
+  const endpoint = `repos/${repository}/contents/${caskPath}`;
   const current = JSON.parse(gh(['api', `${endpoint}?ref=main`]));
   const source = Buffer.from(current.content, 'base64').toString('utf8');
   assert.match(source, /^  version "[^"]+"$/m, 'Cannot locate Homebrew cask version');
@@ -79,7 +76,7 @@ if (plan && channel === 'production') {
       successComment: false,
       failComment: false,
       releasedLabels: false,
-      releaseNameTemplate: 'Serein <%= nextRelease.version %>',
+      releaseNameTemplate: 'Evita <%= nextRelease.version %>',
     }],
   );
 }
@@ -126,7 +123,7 @@ if (mode === 'plan') {
       const assets = readdirSync('release-assets')
         .map(name => `release-assets/${name}`);
       execFileSync('gh', ['release', 'create', plan.gitTag, ...assets,
-        '--target', plan.gitHead, '--title', `Serein ${plan.version}`,
+        '--target', plan.gitHead, '--title', `Evita ${plan.version}`,
         '--notes-file', 'target/release-notes.md', '--prerelease', '--latest=false', '--draft'],
       { stdio: 'inherit' });
     }
