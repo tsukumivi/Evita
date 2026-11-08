@@ -51,9 +51,9 @@ class RepositoryInputs(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             names = [
-                "evita-v1.0.0-Linux-ubuntu-26.04-serein_1.0.0_arm64.deb",
-                "evita-v1.0.0-Linux-ubuntu-26.04-serein_1.0.0_amd64.deb",
-                "evita-v1.0.0-Linux-ubuntu-24.04-serein_1.0.0_arm64.deb",
+                "evita-v1.0.0-Linux-ubuntu-26.04-evita_1.0.0_arm64.deb",
+                "evita-v1.0.0-Linux-ubuntu-26.04-evita_1.0.0_amd64.deb",
+                "evita-v1.0.0-Linux-ubuntu-24.04-evita_1.0.0_arm64.deb",
                 "evita-v1.0.0-Linux-fedora-44-evita-1.0.0.x86_64.rpm",
                 "evita-v1.0.0-Linux-x86_64.flatpak",
                 "SHA256SUMS.txt",

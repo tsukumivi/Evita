@@ -153,7 +153,7 @@ def package(root, application_version):
             f"Package: evita\nVersion: {version}\nArchitecture: {architecture}\n"
             "Section: net\nPriority: optional\n"
             "Maintainer: Evita contributors <noreply@github.com>\n"
-            "Homepage: https://github.com/ViceVerse-cz/Serein\n"
+            "Homepage: https://github.com/tsukumivi/Evita\n"
             f"Installed-Size: {installed_kib}\nDepends: {depends}\n"
             "Recommends: gnome-keyring, xdg-desktop-portal-gnome | xdg-desktop-portal-kde | xdg-desktop-portal-wlr, "
             "gstreamer1.0-plugins-bad, gstreamer1.0-gl, gstreamer1.0-libav\n"
@@ -164,7 +164,7 @@ def package(root, application_version):
         for path in [stage, *stage.rglob("*")]:
             path.chmod(0o755 if path.is_dir() or path == stage / "usr/bin/evita" else 0o644)
         checked("desktop-file-validate", str(stage / "usr/share/applications/app.evita.client.desktop"))
-        artifact = root / f"serein_{version}_{architecture}.deb"
+        artifact = root / f"evita_{version}_{architecture}.deb"
         candidate = temporary / artifact.name
         checked("dpkg-deb", "--root-owner-group", "-Zxz", "--build", str(stage), str(candidate))
         smoke(candidate, stage, temporary, version, architecture, depends)
@@ -255,12 +255,12 @@ def rpm_package(temporary, stage, application_version, distro):
         "%global _build_id_links none\n"
         f"Name: evita\nVersion: {version}\nRelease: {release}\n"
         "Summary: Unofficial native Discord client\nLicense: MIT OR Apache-2.0\n"
-        "URL: https://github.com/ViceVerse-cz/Serein\n"
+        "URL: https://github.com/tsukumivi/Evita\n"
         + "\n".join(f"Requires: {item}" for item in requires)
         + f"\nRecommends: gnome-keyring, {plugins}\n"
         "\n%description\nNative Rust client for existing Discord accounts, including voice.\n"
         "Unofficial, experimental, and not endorsed by Discord.\n"
-        "\n%install\nmkdir -p %{buildroot}\ncp -a %{_serein_payload}/. %{buildroot}/\n"
+        "\n%install\nmkdir -p %{buildroot}\ncp -a %{_evita_payload}/. %{buildroot}/\n"
         "\n%files\n%defattr(-,root,root,-)\n/usr/bin/evita\n"
         "/usr/share/applications/app.evita.client.desktop\n/usr/share/doc/evita\n"
         + "".join(f"/{name}\n" for name in payload_files(stage) if name.startswith("usr/share/icons/")),
@@ -269,7 +269,7 @@ def rpm_package(temporary, stage, application_version, distro):
     if not re.fullmatch(r"[/A-Za-z0-9_.-]+", str(temporary)):
         raise ValueError("RPM temporary directory must have a simple absolute path")
     checked("rpmbuild", "-bb", "--define", f"_topdir {temporary}/rpm",
-            "--define", f"_serein_payload {stage}", str(spec))
+            "--define", f"_evita_payload {stage}", str(spec))
     artifact, = (temporary / "rpm/RPMS").rglob("*.rpm")
     actual = output("rpm", "-qp", "--qf", "%{NAME}\n%{VERSION}\n%{RELEASE}\n%{ARCH}", str(artifact))
     if actual != f"evita\n{version}\n{release}\n{platform.machine()}":
@@ -318,7 +318,7 @@ def arch_package(temporary, stage, application_version, libraries):
     (temporary / "PKGBUILD").write_text(
         f"pkgname=evita\npkgver='{version}'\npkgrel=1\n"
         "pkgdesc='Unofficial native Discord client'\n"
-        f"arch=('{platform.machine()}')\nurl='https://github.com/ViceVerse-cz/Serein'\n"
+        f"arch=('{platform.machine()}')\nurl='https://github.com/tsukumivi/Evita'\n"
         "license=('MIT' 'Apache-2.0')\noptions=('!strip' '!debug' '!lto')\n"
         + "depends=(" + " ".join(f"'{item}'" for item in sorted(depends)) + ")\n"
         "optdepends=('gnome-keyring: Secret Service credential provider' "
