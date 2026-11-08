@@ -1,13 +1,13 @@
-# Binary recipe for the existing voice-enabled Arch release. No Rust build required.
-pkgname=serein-bin
+# Binary recipe template for Evita's voice-enabled Arch release. No Rust build required.
+pkgname=evita-bin
 pkgver=1.0.0pre.nightly.20261001.53
 pkgrel=1
-pkgdesc='Unofficial native Discord client (prebuilt nightly)'
+pkgdesc='Experimental native Discord client (prebuilt nightly)'
 arch=('x86_64')
-url='https://github.com/ViceVerse-cz/Serein'
+url='https://github.com/tsukumivi/Evita'
 license=('MIT' 'Apache-2.0')
-provides=("serein=$pkgver")
-conflicts=('serein' 'serein-git')
+provides=("evita=$pkgver")
+conflicts=('evita' 'evita-git')
 options=('!strip' '!debug' '!lto')
 # Preserve the native release's ABI floors, including dynamically loaded media plugins.
 depends=(
@@ -150,14 +150,21 @@ optdepends=(
   'gst-plugins-bad: hardware screen encoding'
   'gst-libav: inline video'
 )
-source_x86_64=('https://github.com/ViceVerse-cz/Serein/releases/download/v1.0.0-nightly.20261001.53/serein-v1.0.0-nightly.20261001.53-Linux-arch-serein-1.0.0pre.nightly.20261001.53-1-x86_64.pkg.tar.zst')
-sha256sums_x86_64=('5efa3f71216cced0da707753b96007add5efc9bad256c390ecc020c5a238dfc5')
+if [[ -n ${EVITA_ARCH_PACKAGE:-} ]]; then
+  # Release CI wraps the package it just built; it must not download a previous release.
+  source_x86_64=("file://${EVITA_ARCH_PACKAGE}")
+  sha256sums_x86_64=("$(sha256sum "$EVITA_ARCH_PACKAGE" | cut -d ' ' -f1)")
+else
+  # Maintainers update this pinned asset and checksum after each Evita release.
+  source_x86_64=('https://github.com/tsukumivi/Evita/releases/download/v1.0.0-nightly.20261001.53/evita-v1.0.0-nightly.20261001.53-Linux-arch-evita-1.0.0pre.nightly.20261001.53-1-x86_64.pkg.tar.zst')
+  sha256sums_x86_64=('5efa3f71216cced0da707753b96007add5efc9bad256c390ecc020c5a238dfc5')
+fi
 
 package() {
   install -d "$pkgdir/usr/bin" "$pkgdir/usr/share/licenses/$pkgname"
-  install -m755 "$srcdir/usr/bin/serein" "$pkgdir/usr/bin/serein"
+  install -m755 "$srcdir/usr/bin/evita" "$pkgdir/usr/bin/evita"
   install -d "$pkgdir/usr/share"
   cp -a "$srcdir/usr/share/." "$pkgdir/usr/share/"
-  install -m644 "$srcdir/usr/share/doc/serein/LICENSE-MIT" "$pkgdir/usr/share/licenses/$pkgname/LICENSE-MIT"
-  install -m644 "$srcdir/usr/share/doc/serein/LICENSE-APACHE" "$pkgdir/usr/share/licenses/$pkgname/LICENSE-APACHE"
+  install -m644 "$srcdir/usr/share/doc/evita/LICENSE-MIT" "$pkgdir/usr/share/licenses/$pkgname/LICENSE-MIT"
+  install -m644 "$srcdir/usr/share/doc/evita/LICENSE-APACHE" "$pkgdir/usr/share/licenses/$pkgname/LICENSE-APACHE"
 }
