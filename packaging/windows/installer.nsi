@@ -20,11 +20,11 @@ SetCompressor /SOLID lzma
 !define APP_ID "app.evita.client"
 
 !ifndef EVITA_VERSION
-  !define EVITA_VERSION "1.0.0"
+  !error "EVITA_VERSION must be supplied by the package build"
 !endif
 
 !ifndef EVITA_FILE_VERSION
-  !define EVITA_FILE_VERSION "1.0.0.0"
+  !error "EVITA_FILE_VERSION must be supplied by the package build"
 !endif
 
 !ifndef DIST_DIR
