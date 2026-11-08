@@ -100,6 +100,14 @@ def main():
                         f"-DOUTPUT_DIR={output}", str(repository / "packaging/windows/installer.nsi")],
                        cwd=repository, check=True, timeout=120)
         setup = output / "evita-0.0.0-offline-setup.exe"
+        version_metadata = subprocess.run(
+            ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command",
+             "$info = (Get-Item -LiteralPath $env:EVITA_TEST_SETUP_PATH).VersionInfo; "
+             "'{0}|{1}' -f $info.FileVersion, $info.ProductVersion"],
+            env={**os.environ, "EVITA_TEST_SETUP_PATH": str(setup)},
+            capture_output=True, text=True, check=True,
+        ).stdout.strip()
+        assert version_metadata == "0.0.0-offline|0.0.0-offline", version_metadata
         installed = root / "Installed Evita žluťoučký"
         uninstaller = installed / "uninstall.exe"
         copied_uninstaller = root / "uninstall-test.exe"

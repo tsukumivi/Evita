@@ -31,6 +31,9 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7.0.1
+      - name: Install NSIS
+        if: runner.os == 'Windows' && runner.arch == 'X64'
+        run: choco install nsis --no-progress -y
       # Steps in one parallel group must not share a Cargo target directory.
       - parallel:
           - name: Mac signing regression (offline)
@@ -57,6 +60,9 @@ jobs:
       - name: Test offline typing with demo support
         run: cargo test --locked -p evita -p ui -p client-core -p discord-api --features evita/demo --lib --bins typing
       - run: cargo xtask check
+      - name: Windows installer version regression
+        if: runner.os == 'Windows' && runner.arch == 'X64'
+        run: python packaging/windows/test_installer.py
       - parallel:
           - name: Flatpak encoding after GTK initialization (synthetic)
             if: runner.os == 'Linux'
