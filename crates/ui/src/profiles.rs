@@ -1035,10 +1035,11 @@ pub(crate) fn presence_color(status: &str) -> Color32 {
 /// lower-right rim; list avatars keep a thin ring in the corner.
 fn presence_badge_metrics(rect: Rect) -> (f32, f32, egui::Pos2) {
 	let (radius, ring, inset) = if rect.width() >= AVATAR {
-		(rect.width() * 0.12, 4.0, rect.width() * 0.15)
+		let radius = (rect.width() * 0.075).clamp(5.0, 8.0);
+		(radius, 2.0, radius + 1.0)
 	} else {
-		let radius = (rect.width() * 0.17).clamp(5.0, 10.0);
-		(radius, 2.0, radius + 0.5)
+		let radius = (rect.width() * 0.15).clamp(4.0, 6.0);
+		(radius, 2.0, radius + 1.0)
 	};
 	(radius, ring, rect.right_bottom() - Vec2::splat(inset))
 }

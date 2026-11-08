@@ -1012,6 +1012,7 @@ impl MessagingUi {
 						title: Some("Evita community".into()),
 						..Default::default()
 					},
+					..Default::default()
 				})),
 			),
 		);
@@ -6948,6 +6949,7 @@ mod composer_tests {
 						title: Some("Synthetic invited server".into()),
 						..Default::default()
 					},
+					..Default::default()
 				})),
 			),
 		);

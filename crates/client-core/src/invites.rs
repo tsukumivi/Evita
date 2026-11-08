@@ -154,6 +154,7 @@ mod tests {
 					guild: Some(model::Id(2)),
 					channel: None,
 					embed: model::Embed::default(),
+					..Default::default()
 				}),
 			);
 			assert!(state.guild(model::Id(2)).is_none());
@@ -180,6 +181,7 @@ mod tests {
 					guild: Some(model::Id(2)),
 					channel: None,
 					embed,
+					..Default::default()
 				})),
 			};
 			assert!(event.bytes() >= size_of::<Event>() + size_of::<model::Embed>() + 1024);
@@ -432,6 +434,7 @@ mod join_tests {
 						guild: Some(model::Id(2)),
 						channel: None,
 						embed: model::Embed::default(),
+						..Default::default()
 					})),
 				),
 			);

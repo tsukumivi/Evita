@@ -15,6 +15,7 @@ mod message_options;
 mod messaging_permissions;
 mod onboarding;
 mod profile_edit;
+mod quests;
 #[cfg(debug_assertions)]
 pub use profile_edit::debug_profile_board_request_check;
 pub mod proxy;
@@ -897,6 +898,13 @@ impl DiscordApi {
 	}
 	pub async fn execute(&self, command: Command) -> Event {
 		match command {
+			Command::Quests { request } => Event::Quests {
+				request,
+				result: self
+					.request_limited(Method::GET, "/quests/@me", None, 256 * 1024)
+					.await
+					.and_then(|bytes| quests::parse(&bytes)),
+			},
 			Command::ApplicationCommands {
 				channel,
 				guild,
@@ -2485,6 +2493,7 @@ mod tests {
 						guild: Some(model::Id(2)),
 						channel: None,
 						embed: Default::default(),
+						..Default::default()
 					})),
 				),
 			);
