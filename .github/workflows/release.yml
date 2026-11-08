@@ -32,6 +32,8 @@ jobs:
       release: ${{ steps.version.outputs.release }}
       tag: ${{ steps.version.outputs.tag }}
       version: ${{ steps.version.outputs.version }}
+      macos_signing: ${{ steps.signing.outputs.macos }}
+      package_signing: ${{ steps.signing.outputs.packages }}
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -47,7 +49,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: bun .github/release/release.mjs plan
-      - name: Require Mac signing credentials before building
+      - name: Detect optional signing credentials
+        id: signing
         if: steps.version.outputs.release == 'true'
         env:
           MACOS_CERTIFICATE_BASE64: ${{ secrets.MACOS_CERTIFICATE_BASE64 }}
@@ -56,10 +59,24 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          PACKAGE_SIGNING_KEY: ${{ secrets.PACKAGE_SIGNING_KEY }}
+          PACKAGE_SIGNING_FINGERPRINT: ${{ vars.PACKAGE_SIGNING_FINGERPRINT }}
         run: |
-          for name in MACOS_CERTIFICATE_BASE64 MACOS_CERTIFICATE_PASSWORD MACOS_SIGNING_IDENTITY APPLE_ID APPLE_TEAM_ID APPLE_APP_SPECIFIC_PASSWORD; do
-            test -n "${!name}" || { echo "Missing Actions secret: $name"; exit 1; }
-          done
+          set -euo pipefail
+          if [[ -n "$MACOS_CERTIFICATE_BASE64" && -n "$MACOS_CERTIFICATE_PASSWORD" \
+            && -n "$MACOS_SIGNING_IDENTITY" && -n "$APPLE_ID" \
+            && -n "$APPLE_TEAM_ID" && -n "$APPLE_APP_SPECIFIC_PASSWORD" ]]; then
+            echo 'macos=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'macos=false' >> "$GITHUB_OUTPUT"
+            echo '::notice::Apple signing credentials are incomplete; the macOS package will be unsigned and will not be notarized.'
+          fi
+          if [[ -n "$PACKAGE_SIGNING_KEY" && -n "$PACKAGE_SIGNING_FINGERPRINT" ]]; then
+            echo 'packages=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'packages=false' >> "$GITHUB_OUTPUT"
+            echo '::notice::GPG package signing credentials are incomplete; signed Linux package repositories will be skipped.'
+          fi
       - name: Apply planned version to manifests
         if: steps.version.outputs.release == 'true'
         env:
@@ -121,7 +138,7 @@ jobs:
           mkdir release-assets
           echo "ASSET=evita-$TAG-$RUNNER_OS-$RUNNER_ARCH" >> "$GITHUB_ENV"
       - name: Sign, notarize and verify Mac app
-        if: runner.os == 'macOS'
+        if: runner.os == 'macOS' && needs.prepare.outputs.macos_signing == 'true'
         env:
           MACOS_CERTIFICATE_BASE64: ${{ secrets.MACOS_CERTIFICATE_BASE64 }}
           MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
@@ -190,12 +207,11 @@ jobs:
       - name: Commit versions and publish semantic release with notes and assets
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
         run: bun .github/release/release.mjs publish
 
   repositories:
     needs: [prepare, build, linux, publish]
-    if: needs.prepare.outputs.release == 'true'
+    if: needs.prepare.outputs.release == 'true' && needs.prepare.outputs.package_signing == 'true'
     permissions:
       contents: read
       pages: write
@@ -204,6 +220,6 @@ jobs:
     with:
       tag: ${{ needs.prepare.outputs.tag }}
       channel: ${{ inputs.channel || 'nightly' }}
-      base_url: https://viceverse-cz.github.io/Serein
+      base_url: https://tsukumivi.github.io/Evita
       deploy: true
     secrets: inherit

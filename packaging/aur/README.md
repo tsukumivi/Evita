@@ -3,8 +3,10 @@
 This directory prepares `evita-bin` for an AUR maintainer. It is **not an AUR
 publication**, and no AUR package availability or ownership is claimed. The recipe
 repackages the project's existing, voice-enabled x86_64 Arch release without
-compiling Rust or configuring an additional pacman repository. It currently pins
-nightly `v1.0.0-nightly.20261001.53`, verified against that release's `SHA256SUMS.txt`.
+compiling Rust or configuring an additional pacman repository. Evita does not yet
+have a GitHub Release, so the current source URL and checksum are a migration
+template and must be refreshed from the first Evita Arch release before an AUR
+submission.
 The native package's dependency version floors, desktop integration, icons, notices
 and bundled licenses are preserved. ARM Arch binaries are not provided.
 
@@ -31,9 +33,11 @@ in `pkgver`, and never replace the checksum with `SKIP`. Generate and review
 requires a maintainer-controlled AUR account and package name; this repository's
 GitHub push/release automation does not publish to the AUR.
 
-`check-dependencies.sh` compares the downloaded release's `.PKGINFO` with the
-recipe's exact dependency entries, including duplicate names and version floors.
-CI runs it after checksum verification and rejects dependency drift.
+`check-dependencies.sh` compares the package names in the downloaded release's
+`.PKGINFO` with the recipe. It ignores version-floor differences because Arch is
+rolling and CI's package database can advance between AUR template updates. Keep
+the recipe's ABI floors synchronized with the verified release when updating
+`pkgver`; CI still rejects missing or extra runtime package names.
 
 [Arch's PKGBUILD reference](https://man.archlinux.org/man/PKGBUILD.5.en) documents
 checksum, metadata and package-function behavior. Native Arch makepkg validation

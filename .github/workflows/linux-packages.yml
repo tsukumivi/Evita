@@ -84,8 +84,11 @@ jobs:
               makepkg --printsrcinfo > "$aur_metadata"
               diff -u .SRCINFO "$aur_metadata"
               rm "$aur_metadata"
+              set -- ../../dist/evita-*.pkg.tar.zst
+              test "$#" -eq 1
+              export EVITA_ARCH_PACKAGE="$(realpath "$1")"
               makepkg --verifysource
-              bash check-dependencies.sh
+              bash check-dependencies.sh "$EVITA_ARCH_PACKAGE"
               makepkg --nodeps --noconfirm
             fi
           BUILD

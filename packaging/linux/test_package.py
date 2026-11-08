@@ -75,7 +75,7 @@ class NativePackageTest(unittest.TestCase):
                     packaging.native_package(staged, "0.1.0", FORMAT)
                 return
             packaging.package(staged, "0.1.0-test")
-            artifact = next(staged.glob("serein_*.deb"))
+            artifact = next(staged.glob("evita_*.deb"))
             self.assertEqual(packaging.output("dpkg-deb", "--field", str(artifact), "Package"), "evita")
             self.assertIn("gstreamer1.0-plugins-good", packaging.output(
                 "dpkg-deb", "--field", str(artifact), "Depends").split(", "))

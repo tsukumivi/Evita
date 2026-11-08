@@ -213,18 +213,18 @@ opt-level = 3
 opt-level = 3
 
 [patch.crates-io]
-# Align Direct3D interfaces with wgpu-hal; see vendor/gpu-allocator/SEREIN-PATCH.md.
+# Align Direct3D interfaces with wgpu-hal for the Windows renderer.
 gpu-allocator = { path = "vendor/gpu-allocator" }
 # Replace an affected SHAKE dependency while retaining the compatible HPKE API.
 hpke-rs = { path = "vendor/hpke-rs" }
-# Native DAVE does not need OpenMLS browser timers; see vendor/davey/SEREIN-PATCH.md.
+# Native DAVE does not need OpenMLS browser timers.
 davey = { path = "vendor/davey" }
 
 # Linux login uses GTK4/WebKit6; exclude obsolete GTK3 declarations from the lockfile.
 wry = { path = "vendor/wry" }
 
 [patch."https://github.com/emilk/egui"]
-# Windows window drags must not wait for a repaint per move; see vendor/egui-winit/SEREIN-PATCH.md.
+# Avoid redundant repaint work during Windows title-bar drags.
 egui-winit = { path = "vendor/egui-winit" }
 
 [profile.dev.package.sonora-ns]

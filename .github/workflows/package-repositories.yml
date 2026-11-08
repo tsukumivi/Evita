@@ -15,7 +15,7 @@ on:
       base_url:
         description: Public HTTPS root where the generated repository tree will be hosted
         required: false
-        default: https://viceverse-cz.github.io/Serein
+        default: https://tsukumivi.github.io/Evita
         type: string
       deploy:
         description: Deploy the signed tree to the configured GitHub Pages site
@@ -43,13 +43,33 @@ on:
         type: boolean
     secrets:
       PACKAGE_SIGNING_KEY:
-        required: true
+        required: false
 
 permissions:
   contents: read
 
 jobs:
+  signing:
+    runs-on: ubuntu-latest
+    outputs:
+      available: ${{ steps.check.outputs.available }}
+    steps:
+      - name: Check optional signing credentials
+        id: check
+        env:
+          PACKAGE_SIGNING_KEY: ${{ secrets.PACKAGE_SIGNING_KEY }}
+          PACKAGE_SIGNING_FINGERPRINT: ${{ vars.PACKAGE_SIGNING_FINGERPRINT }}
+        run: |
+          if [[ -n "$PACKAGE_SIGNING_KEY" && -n "$PACKAGE_SIGNING_FINGERPRINT" ]]; then
+            echo 'available=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'available=false' >> "$GITHUB_OUTPUT"
+            echo '::notice::GPG key or fingerprint is missing; signed repository generation will be skipped.'
+          fi
+
   download:
+    needs: signing
+    if: needs.signing.outputs.available == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7.0.1
@@ -71,7 +91,8 @@ jobs:
           retention-days: 1
 
   repositories:
-    needs: download
+    needs: [signing, download]
+    if: needs.signing.outputs.available == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -149,7 +170,8 @@ jobs:
           retention-days: 14
 
   assemble:
-    needs: [repositories, download]
+    needs: [signing, repositories, download]
+    if: needs.signing.outputs.available == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7.0.1
@@ -182,7 +204,7 @@ jobs:
           import os
           from pathlib import Path
           template = Path("packaging/flatpak/evita.flatpakref").read_text()
-          reference = template.replace("https://viceverse-cz.github.io/Serein", os.environ["BASE_URL"].rstrip("/"))
+          reference = template.replace("https://tsukumivi.github.io/Evita", os.environ["BASE_URL"].rstrip("/"))
           Path("site/flatpak/evita.flatpakref").write_text(reference)
           PY
           cp packaging/linux/hicolor/256x256/apps/evita.png site/icons/evita.png
@@ -210,8 +232,8 @@ jobs:
           retention-days: 14
 
   deploy:
-    needs: assemble
-    if: inputs.deploy == true
+    needs: [signing, assemble]
+    if: needs.signing.outputs.available == 'true' && inputs.deploy == true
     runs-on: ubuntu-latest
     environment:
       name: github-pages
