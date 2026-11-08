@@ -96,7 +96,7 @@ def main():
         (payload / "LICENSE-MIT").write_text("Synthetic installer fixture")
         for name in ("install-notifications.ps1", "setup.ps1"):
             (payload / name).write_text("throw 'Installer must not run or install this optional script'")
-        subprocess.run([compiler, "-V2", "-NOCD", "-DVERSION=0.0.0-offline", f"-DDIST_DIR={payload}",
+        subprocess.run([compiler, "-V2", "-NOCD", "-DEVITA_VERSION=0.0.0-offline", "-DEVITA_FILE_VERSION=0.0.0.0", f"-DDIST_DIR={payload}",
                         f"-DOUTPUT_DIR={output}", str(repository / "packaging/windows/installer.nsi")],
                        cwd=repository, check=True, timeout=120)
         setup = output / "evita-0.0.0-offline-setup.exe"
