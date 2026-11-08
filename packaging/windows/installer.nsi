@@ -20,7 +20,7 @@ SetCompressor /SOLID lzma
 !define APP_ID "app.evita.client"
 
 !ifndef VERSION
-  !define VERSION "0.1.0"
+  !define VERSION "1.0.0"
 !endif
 
 !ifndef DIST_DIR
