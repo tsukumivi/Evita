@@ -512,38 +512,6 @@ fn copy_webview2_loader(root: &std::path::Path) -> Result<(), String> {
 	))
 }
 
-#[cfg(test)]
-mod tests {
-	use super::prepare_installer_output;
-	use std::time::{SystemTime, UNIX_EPOCH};
-
-	#[test]
-	fn installer_output_discards_stale_setup_files() {
-		let nonce = SystemTime::now()
-			.duration_since(UNIX_EPOCH)
-			.expect("system clock should be after the Unix epoch")
-			.as_nanos();
-		let root = std::env::temp_dir().join(format!(
-			"evita-xtask-installer-{}-{nonce}",
-			std::process::id()
-		));
-		let output = root.join("dist-installer");
-		std::fs::create_dir_all(&output).expect("create output directory");
-		std::fs::write(output.join("evita-0.1.0-setup.exe"), b"stale fixture")
-			.expect("create stale installer fixture");
-
-		prepare_installer_output(&output).expect("prepare fresh installer output");
-		assert_eq!(
-			std::fs::read_dir(&output)
-				.expect("read output directory")
-				.count(),
-			0
-		);
-
-		std::fs::remove_dir_all(root).expect("remove temporary test directory");
-	}
-}
-
 fn copy_self_import_alias(
 	root: &std::path::Path,
 	executable: &std::path::Path,
@@ -617,5 +585,37 @@ fn main() -> ExitCode {
 			eprintln!("{error}");
 			ExitCode::FAILURE
 		}
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::prepare_installer_output;
+	use std::time::{SystemTime, UNIX_EPOCH};
+
+	#[test]
+	fn installer_output_discards_stale_setup_files() {
+		let nonce = SystemTime::now()
+			.duration_since(UNIX_EPOCH)
+			.expect("system clock should be after the Unix epoch")
+			.as_nanos();
+		let root = std::env::temp_dir().join(format!(
+			"evita-xtask-installer-{}-{nonce}",
+			std::process::id()
+		));
+		let output = root.join("dist-installer");
+		std::fs::create_dir_all(&output).expect("create output directory");
+		std::fs::write(output.join("evita-0.1.0-setup.exe"), b"stale fixture")
+			.expect("create stale installer fixture");
+
+		prepare_installer_output(&output).expect("prepare fresh installer output");
+		assert_eq!(
+			std::fs::read_dir(&output)
+				.expect("read output directory")
+				.count(),
+			0
+		);
+
+		std::fs::remove_dir_all(root).expect("remove temporary test directory");
 	}
 }
