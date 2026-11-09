@@ -5307,29 +5307,13 @@ mod tests {
 			})
 		};
 		let full = render_button(vec![], false, &mut chosen);
-		let full_position = full
-			.shapes
-			.iter()
-			.find_map(|shape| match &shape.shape {
-				egui::Shape::Text(text)
-					if text.galley.job.text == crate::i18n::translate("friends") =>
-				{
-					Some(text.pos + text.galley.size() * 0.5)
-				}
-				_ => None,
-			})
-			.expect("full-profile friend status button label");
+		let full_position = ctx
+			.interactive_rects_last_pass()
+			.into_iter()
+			.next()
+			.expect("full-profile friend status button hitbox")
+			.center();
 		full.drop_without_applying_deltas();
-		let output = render_button(vec![], true, &mut chosen);
-		let position = output
-			.shapes
-			.iter()
-			.find_map(|s| match &s.shape {
-				egui::Shape::Circle(c) if (c.radius - CIRCLE * 0.5).abs() < 0.5 => Some(c.center),
-				_ => None,
-			})
-			.expect("friend circle");
-		output.drop_without_applying_deltas();
 		let pointer = |position, pressed| {
 			vec![
 				egui::Event::PointerMoved(position),
@@ -5347,6 +5331,14 @@ mod tests {
 			.drop_without_applying_deltas();
 		assert!(matches!(chosen, Some(Action::RemoveFriend)));
 		chosen = None;
+		let output = render_button(vec![], true, &mut chosen);
+		let position = ctx
+			.interactive_rects_last_pass()
+			.into_iter()
+			.next()
+			.expect("compact friend status button hitbox")
+			.center();
+		output.drop_without_applying_deltas();
 		render_button(pointer(position, true), true, &mut chosen).drop_without_applying_deltas();
 		render_button(pointer(position, false), true, &mut chosen).drop_without_applying_deltas();
 		assert!(matches!(chosen, Some(Action::RemoveFriend)));
