@@ -3,7 +3,7 @@
 
 use std::{sync::OnceLock, time::Duration};
 
-use egui::Context;
+use eframe::egui::Context;
 use futures_util::StreamExt;
 
 const MAX_WOFF2_BYTES: usize = 320 * 1024;
