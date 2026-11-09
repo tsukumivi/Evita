@@ -38,6 +38,7 @@ rasterlottie.workspace = true
 getrandom.workspace = true
 url.workspace = true
 time = { workspace = true, features = ["local-offset"] }
+wuff.workspace = true
 sha2 = "=0.10.9"
 md4 = "=0.10.2"
 semver = "=1.0.28"

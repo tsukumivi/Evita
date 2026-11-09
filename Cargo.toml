@@ -41,6 +41,7 @@ rusqlite = { version = "=0.40.2", default-features = false, features = ["bundled
 dirs = "=7.0.0"
 getrandom = "0.4"
 time = { version = "0.3", features = ["parsing"] }
+wuff = { version = "=0.2.10", default-features = false, features = ["brotli"] }
 wry = { version = "=0.57.0", default-features = false, features = ["os-webview"] }
 keyring = "=4.2.0"
 keyring-core = "=1.0.0"

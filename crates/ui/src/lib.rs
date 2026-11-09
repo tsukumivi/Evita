@@ -1848,29 +1848,22 @@ impl MessagingUi {
 											let trailing =
 												profiles::server_tag_width(ui, server_tag)
 													+ if server_tag.is_some() { 5.0 } else { 0.0 };
-											crate::name_styles::in_row(
-												response.contains_pointer() || response.has_focus(),
-												|| {
-													account_badge::name(
-														ui,
-														&member.user,
-														name,
-														15.0,
-														(
-															text_color,
-															role_colors,
-															if response.hovered()
-																|| response.has_focus()
-															{
-																colors.hover
-															} else {
-																colors.sidebar
-															},
-														),
-														egui::Sense::hover(),
-														trailing,
-													)
-												},
+											account_badge::server_member_name(
+												ui,
+												&member.user,
+												name,
+												15.0,
+												(
+													text_color,
+													role_colors,
+													if response.hovered() || response.has_focus() {
+														colors.hover
+													} else {
+														colors.sidebar
+													},
+												),
+												egui::Sense::hover(),
+												trailing,
 											);
 											if let Some(tag) = server_tag {
 												profiles::server_tag(

@@ -109,7 +109,7 @@ pub struct NameStyleDto {
 }
 pub type NameStyleField = Option<Lenient<NameStyleDto>>;
 
-/// A style with at most four valid colours; anything else is dropped.
+/// A style with one to five valid colours; anything else is dropped.
 pub fn name_style(field: NameStyleField) -> Option<model::NameStyle> {
 	let dto = Lenient::value(field)?;
 	let colors = dto.colors?;
@@ -490,10 +490,24 @@ mod tests {
 			(member.effect, member.colors.as_slice()),
 			(model::NameEffect::Neon, &[0x00ff00][..])
 		);
+		let prism = name_style(
+			serde_json::from_value(serde_json::json!({
+				"font_id": 3,
+				"effect_id": 7,
+				"colors": [0x110000, 0x002200, 0x000033, 0x440044, 0x555500]
+			}))
+			.ok(),
+		)
+		.expect("Discord's Prism style supports five colors");
+		assert_eq!(prism.effect, model::NameEffect::Prism);
+		assert_eq!(
+			prism.colors,
+			[0x110000, 0x002200, 0x000033, 0x440044, 0x555500]
+		);
 		for bad in [
 			serde_json::json!({"effect_id": 2, "colors": []}),
 			serde_json::json!({"effect_id": 2, "colors": [16777216]}),
-			serde_json::json!({"effect_id": 2, "colors": [1, 2, 3, 4, 5]}),
+			serde_json::json!({"effect_id": 7, "colors": [1, 2, 3, 4, 5, 6]}),
 			serde_json::json!("not a style"),
 		] {
 			assert!(name_style(serde_json::from_value(bad).ok()).is_none());
