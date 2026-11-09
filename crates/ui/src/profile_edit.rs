@@ -48,6 +48,18 @@ mod crop_tests {
 		assert!(left.pixels[128 * 256 + 128].r() > left.pixels[128 * 256 + 128].b());
 		assert!(right.pixels[128 * 256 + 128].b() > right.pixels[128 * 256 + 128].r());
 	}
+
+	#[test]
+	fn avatar_crop_region_is_pixel_aligned_for_zoomed_pan() {
+		assert_eq!(
+			avatar_crop_region(9, 5, 2.0, egui::vec2(0.25, -0.5)),
+			CropRegion {
+				x: 4,
+				y: 1,
+				side: 3,
+			}
+		);
+	}
 }
 impl Draft {
 	fn from_profile(profile: &UserProfile) -> Self {
@@ -114,6 +126,25 @@ struct CropDraft {
 	zoom: f32,
 	pan: egui::Vec2,
 	error: Option<&'static str>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct CropRegion {
+	x: u32,
+	y: u32,
+	side: u32,
+}
+
+fn avatar_crop_region(width: u32, height: u32, zoom: f32, pan: egui::Vec2) -> CropRegion {
+	let shortest = width.min(height);
+	let side = ((shortest as f32) / zoom.clamp(1.0, 3.0))
+		.round()
+		.clamp(1.0, shortest as f32) as u32;
+	let x = (((width - side) as f32 * (pan.x.clamp(-1.0, 1.0) + 1.0) * 0.5).round())
+		.min((width - side) as f32) as u32;
+	let y = (((height - side) as f32 * (pan.y.clamp(-1.0, 1.0) + 1.0) * 0.5).round())
+		.min((height - side) as f32) as u32;
+	CropRegion { x, y, side }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -544,25 +575,24 @@ fn crop_dialog(ctx: &egui::Context, crop: &mut CropDraft) -> Option<CropDecision
 			ui.add_space(12.0);
 			let (preview, _) =
 				ui.allocate_exact_size(egui::Vec2::splat(240.0), egui::Sense::hover());
-			let width = crop.source.size[0] as f32;
-			let height = crop.source.size[1] as f32;
-			let side = (width.min(height) / crop.zoom.clamp(1.0, 3.0)).max(1.0);
-			let left = (width - side) * (crop.pan.x.clamp(-1.0, 1.0) + 1.0) * 0.5;
-			let top = (height - side) * (crop.pan.y.clamp(-1.0, 1.0) + 1.0) * 0.5;
+			let width = crop.source.size[0] as u32;
+			let height = crop.source.size[1] as u32;
+			let region = avatar_crop_region(width, height, crop.zoom, crop.pan);
+			let side = region.side as f32;
 			let image = egui::Rect::from_min_size(
 				egui::pos2(
-					preview.left() - preview.width() * left / side,
-					preview.top() - preview.height() * top / side,
+					preview.left() - preview.width() * region.x as f32 / side,
+					preview.top() - preview.height() * region.y as f32 / side,
 				),
 				egui::vec2(
-					preview.width() * width / side,
-					preview.height() * height / side,
+					preview.width() * width as f32 / side,
+					preview.height() * height as f32 / side,
 				),
 			);
 			ui.painter().with_clip_rect(preview).image(
 				crop.texture.id(),
 				image,
-				egui::Rect::EVERYTHING,
+				egui::Rect::from_min_max(egui::Pos2::ZERO, egui::pos2(1.0, 1.0)),
 				egui::Color32::WHITE,
 			);
 			ui.painter().circle_stroke(
@@ -593,13 +623,7 @@ fn crop_dialog(ctx: &egui::Context, crop: &mut CropDraft) -> Option<CropDecision
 fn encode_avatar_crop(crop: &CropDraft) -> Result<(String, egui::ColorImage), &'static str> {
 	let width = crop.source.size[0] as u32;
 	let height = crop.source.size[1] as u32;
-	let side = ((width.min(height) as f32) / crop.zoom.clamp(1.0, 3.0))
-		.round()
-		.clamp(1.0, width.min(height) as f32) as u32;
-	let x = (((width - side) as f32 * (crop.pan.x.clamp(-1.0, 1.0) + 1.0) * 0.5).round())
-		.min((width - side) as f32) as u32;
-	let y = (((height - side) as f32 * (crop.pan.y.clamp(-1.0, 1.0) + 1.0) * 0.5).round())
-		.min((height - side) as f32) as u32;
+	let region = avatar_crop_region(width, height, crop.zoom, crop.pan);
 	let bytes: Vec<_> = crop
 		.source
 		.pixels
@@ -608,7 +632,8 @@ fn encode_avatar_crop(crop: &CropDraft) -> Result<(String, egui::ColorImage), &'
 		.collect();
 	let source =
 		image::RgbaImage::from_raw(width, height, bytes).ok_or("Could not prepare that crop")?;
-	let square = image::imageops::crop_imm(&source, x, y, side, side).to_image();
+	let square =
+		image::imageops::crop_imm(&source, region.x, region.y, region.side, region.side).to_image();
 	let resized = image::imageops::resize(&square, 256, 256, image::imageops::FilterType::Lanczos3);
 	let mut png = std::io::Cursor::new(Vec::new());
 	image::DynamicImage::ImageRgba8(resized.clone())
