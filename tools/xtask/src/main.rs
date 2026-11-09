@@ -2,6 +2,8 @@ use std::{
 	path::PathBuf,
 	process::{Command, ExitCode, Stdio},
 };
+#[path = "../../../packaging/windows/package_layout.rs"]
+mod windows_package_layout;
 fn run(args: &[&str]) -> Result<(), String> {
 	run_tool("cargo", args)
 }
@@ -186,7 +188,7 @@ fn copy_directory(source: &std::path::Path, destination: &std::path::Path) -> Re
 	}
 	Ok(())
 }
-fn prepare_installer_output(path: &std::path::Path) -> Result<(), String> {
+fn prepare_output_directory(path: &std::path::Path) -> Result<(), String> {
 	match std::fs::remove_dir_all(path) {
 		Ok(()) => {}
 		Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
@@ -197,7 +199,7 @@ fn prepare_installer_output(path: &std::path::Path) -> Result<(), String> {
 #[allow(dead_code)]
 fn package_windows(root: &std::path::Path, import_alias: Option<&str>) -> Result<(), String> {
 	let installer_dir = PathBuf::from("dist-installer");
-	prepare_installer_output(&installer_dir)?;
+	prepare_output_directory(&installer_dir)?;
 	let nsis_candidates = [
 		PathBuf::from("makensis"),
 		PathBuf::from("makensis.exe"),
@@ -275,7 +277,9 @@ fn package() -> Result<(), String> {
 	];
 	run(&arguments)?;
 	let root = PathBuf::from("dist");
-	std::fs::create_dir_all(&root).map_err(|e| e.to_string())?;
+	// `release.yml` archives every top-level entry in dist, so never carry stale
+	// files from a previous package into a new update ZIP.
+	prepare_output_directory(&root)?;
 	let exe = if cfg!(windows) { "evita.exe" } else { "evita" };
 	let destination = if cfg!(target_os = "macos") {
 		let app = root.join("Evita.app/Contents");
@@ -460,6 +464,7 @@ fn package() -> Result<(), String> {
 	}
 	if cfg!(windows) {
 		package_windows(&root, import_alias.as_deref())?;
+		windows_package_layout::windows_package_files(&root)?;
 	}
 	println!(
 		"{} package executable: {} ({} bytes)",
@@ -523,7 +528,7 @@ fn copy_self_import_alias(
 	for entry in std::fs::read_dir(&dependencies).map_err(|e| e.to_string())? {
 		let entry = entry.map_err(|e| e.to_string())?;
 		let name = entry.file_name().to_string_lossy().into_owned();
-		if !name.starts_with("evita-") || !name.ends_with(".exe") {
+		if !windows_package_layout::is_self_import_alias(&name) {
 			continue;
 		}
 		if image
@@ -590,7 +595,7 @@ fn main() -> ExitCode {
 
 #[cfg(test)]
 mod tests {
-	use super::prepare_installer_output;
+	use super::{prepare_output_directory, windows_package_layout};
 	use std::time::{SystemTime, UNIX_EPOCH};
 
 	#[test]
@@ -608,7 +613,7 @@ mod tests {
 		std::fs::write(output.join("evita-0.1.0-setup.exe"), b"stale fixture")
 			.expect("create stale installer fixture");
 
-		prepare_installer_output(&output).expect("prepare fresh installer output");
+		prepare_output_directory(&output).expect("prepare fresh installer output");
 		assert_eq!(
 			std::fs::read_dir(&output)
 				.expect("read output directory")
@@ -617,5 +622,64 @@ mod tests {
 		);
 
 		std::fs::remove_dir_all(root).expect("remove temporary test directory");
+	}
+
+	#[test]
+	fn published_windows_package_root_is_included_in_updater_install_plan() {
+		// Root entries observed in the published Windows-X64 ZIP archives. The
+		// Cargo alias entry is conditional on the GNU toolchain import table.
+		const RELEASE_ROOT: &[&str] = &[
+			"evita.exe",
+			"install-notifications.ps1",
+			"LICENSE-APACHE",
+			"LICENSE-MIT",
+			"licenses",
+			"README.md",
+			"THIRD_PARTY_NOTICES.md",
+			"WebView2Loader.dll",
+		];
+		let nonce = SystemTime::now()
+			.duration_since(UNIX_EPOCH)
+			.expect("system clock should be after the Unix epoch")
+			.as_nanos();
+		let root = std::env::temp_dir().join(format!(
+			"evita-xtask-windows-package-{}-{nonce}",
+			std::process::id()
+		));
+		std::fs::create_dir_all(&root).expect("create package fixture");
+		for name in RELEASE_ROOT {
+			let path = root.join(name);
+			if *name == "licenses" {
+				std::fs::create_dir(&path).expect("create package directory");
+			} else {
+				std::fs::write(path, b"fixture").expect("create package file");
+			}
+		}
+		let alias = "evita-0123456789abcdef.exe";
+		std::fs::write(root.join(alias), b"fixture").expect("create Cargo alias");
+		assert!(windows_package_layout::is_self_import_alias(alias));
+		assert!(!windows_package_layout::is_self_import_alias(
+			"evita-latest.exe"
+		));
+		assert!(!windows_package_layout::is_self_import_alias(
+			"evita-1234.exe"
+		));
+		assert!(!windows_package_layout::is_self_import_alias(
+			"evita-0123456789abcdeg.exe"
+		));
+
+		let installed = windows_package_layout::windows_package_files(&root)
+			.expect("published Windows package layout should be accepted");
+		assert!(
+			RELEASE_ROOT
+				.iter()
+				.all(|name| installed.iter().any(|file| file == name))
+		);
+		assert!(installed.iter().any(|file| file == alias));
+
+		std::fs::write(root.join("unrecognized.dll"), b"fixture")
+			.expect("create unexpected package file");
+		assert!(windows_package_layout::windows_package_files(&root).is_err());
+		std::fs::remove_dir_all(root).expect("remove package fixture");
 	}
 }
