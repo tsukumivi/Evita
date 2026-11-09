@@ -33,6 +33,9 @@ pub fn is_windows_package_file(name: &str) -> bool {
 }
 
 /// Return and validate the actual top-level entries that the update helper must install.
+/// This is used by the Windows updater helper and xtask's packager; other desktop targets
+/// still include this module for the shared Windows ZIP allow-list.
+#[allow(dead_code)]
 pub fn windows_package_files(root: &Path) -> Result<Vec<String>, String> {
 	let entries =
 		fs::read_dir(root).map_err(|error| format!("Cannot read Windows package: {error}"))?;
