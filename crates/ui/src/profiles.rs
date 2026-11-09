@@ -5299,7 +5299,6 @@ mod tests {
 		let mut view = crate::MessagingUi::default();
 		let mut commands = Vec::new();
 		let mut chosen = None;
-		ctx.enable_accesskit();
 		let render_button = |events, compact, chosen: &mut Option<Action>| {
 			ctx.run_ui(input(size, events), |ui| {
 				if let Some(action) = friend_button(ui, &state, &person, compact) {
@@ -5308,23 +5307,18 @@ mod tests {
 			})
 		};
 		let full = render_button(vec![], false, &mut chosen);
-		let bounds = full
-			.platform_output
-			.accesskit_update
-			.as_ref()
-			.unwrap()
-			.nodes
+		let full_position = full
+			.shapes
 			.iter()
-			.find_map(|(_, node)| {
-				(node.label() == Some(crate::i18n::translate("friends").as_str()))
-					.then(|| node.bounds())
-					.flatten()
+			.find_map(|shape| match &shape.shape {
+				egui::Shape::Text(text)
+					if text.galley.job.text == crate::i18n::translate("friends") =>
+				{
+					Some(text.pos + text.galley.size() * 0.5)
+				}
+				_ => None,
 			})
-			.expect("full-profile friend status button");
-		let full_position = pos2(
-			((bounds.x0 + bounds.x1) * 0.5) as f32,
-			((bounds.y0 + bounds.y1) * 0.5) as f32,
-		);
+			.expect("full-profile friend status button label");
 		full.drop_without_applying_deltas();
 		let output = render_button(vec![], true, &mut chosen);
 		let position = output
