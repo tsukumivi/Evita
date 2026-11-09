@@ -207,7 +207,7 @@ mod tests {
 			effect: NameEffect::Neon,
 			colors: vec![0xff0000],
 		};
-		let output = ctx.run_ui(Default::default(), |ui| {
+		let mut output = ctx.run_ui(Default::default(), |ui| {
 			in_row(true, || {
 				server_member_label(
 					ui,
@@ -243,5 +243,7 @@ mod tests {
 				.flat_map(|row| &row.row.visuals.mesh.vertices)
 				.all(|vertex| vertex.color == expected)
 		);
+		output.textures_delta.clear();
+		output.drop_without_applying_deltas();
 	}
 }

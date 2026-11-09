@@ -848,6 +848,9 @@ mod tests {
 		}
 		let ctx = Context::default();
 		install(&ctx);
+		let mut initialized = ctx.run_ui(Default::default(), |_| {});
+		initialized.textures_delta.clear();
+		initialized.drop_without_applying_deltas();
 		assert!(name_family(&ctx, 3).is_none());
 		assert!(name_family(&ctx, 3).is_none());
 		let requests = take_name_font_requests();
@@ -857,20 +860,24 @@ mod tests {
 		}));
 		assert!(install_name_font(&ctx, 3, INTER.to_vec()));
 		let family = name_family(&ctx, 3).expect("installed remote family");
-		ctx.run_ui(Default::default(), |ui| {
+		let mut output = ctx.run_ui(Default::default(), |ui| {
 			let list = &ui.fonts(|fonts| fonts.definitions().families[&family].clone());
 			assert_eq!(list[0], name_font_key(3));
 			assert!(list.iter().any(|face| face == "Inter Medium"));
 			assert!(list.iter().any(|face| face == "Noto Sans Arabic"));
 			ui.label(egui::RichText::new("Synthetic name").family(family.clone()));
-		})
-		.drop_without_applying_deltas();
+		});
+		output.textures_delta.clear();
+		output.drop_without_applying_deltas();
 	}
 
 	#[test]
 	fn name_families_follow_a_custom_font_that_is_set_then_removed() {
 		let ctx = Context::default();
 		install(&ctx);
+		let mut initialized = ctx.run_ui(Default::default(), |_| {});
+		initialized.textures_delta.clear();
+		initialized.drop_without_applying_deltas();
 		assert!(install_name_font(&ctx, 3, INTER.to_vec()));
 		let custom = CustomFont {
 			name: "Synthetic".into(),
@@ -881,7 +888,7 @@ mod tests {
 		let list = ctx.fonts(|fonts| fonts.definitions().families[&family].clone());
 		assert_eq!(&list[..2], [name_font_key(3), CUSTOM[1].to_owned()]);
 		apply_custom(&ctx, None);
-		ctx.run_ui(Default::default(), |ui| {
+		let mut output = ctx.run_ui(Default::default(), |ui| {
 			let definitions = ui.fonts(|fonts| fonts.definitions().clone());
 			assert!(
 				definitions.families[&family]
@@ -890,8 +897,9 @@ mod tests {
 			);
 			// Resolving the family panicked while it still named the removed custom font.
 			ui.label(egui::RichText::new("Synthetic name").family(family.clone()));
-		})
-		.drop_without_applying_deltas();
+		});
+		output.textures_delta.clear();
+		output.drop_without_applying_deltas();
 	}
 
 	#[test]
