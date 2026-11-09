@@ -515,19 +515,20 @@ pub fn install_name_font(ctx: &Context, id: u32, mut bytes: Vec<u8>) -> bool {
 		return false;
 	};
 	use skrifa::{MetadataProvider, raw::TableProvider};
-	let Ok(font) = skrifa::FontRef::new(&bytes) else {
-		return false;
+	let valid = {
+		let Ok(font) = skrifa::FontRef::new(&bytes) else {
+			return false;
+		};
+		!font.head().map_or(true, |head| head.units_per_em() == 0)
+			&& font.hhea().is_ok()
+			&& font.maxp().is_ok()
+			&& font.hmtx().is_ok()
+			&& font.charmap().mappings().next().is_some()
+			&& font.outline_glyphs().format().is_some()
 	};
-	if font.head().map_or(true, |head| head.units_per_em() == 0)
-		|| font.hhea().is_err()
-		|| font.maxp().is_err()
-		|| font.hmtx().is_err()
-		|| font.charmap().mappings().next().is_none()
-		|| font.outline_glyphs().format().is_none()
-	{
+	if !valid {
 		return false;
 	}
-	drop(font);
 	bytes.shrink_to_fit();
 	let Some(shared) = ctx.data(|data| {
 		data.get_temp::<Arc<Mutex<FontDefinitions>>>(egui::Id::unique(DEFINITIONS_KEY))

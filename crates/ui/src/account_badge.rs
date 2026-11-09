@@ -27,6 +27,7 @@ pub(super) fn server_member_name(
 	name_with_mode(ui, user, name, size, color, sense, trailing, true)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn name_with_mode(
 	ui: &mut Ui,
 	user: &User,
