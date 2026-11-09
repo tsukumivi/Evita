@@ -186,8 +186,18 @@ fn copy_directory(source: &std::path::Path, destination: &std::path::Path) -> Re
 	}
 	Ok(())
 }
+fn prepare_installer_output(path: &std::path::Path) -> Result<(), String> {
+	match std::fs::remove_dir_all(path) {
+		Ok(()) => {}
+		Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+		Err(error) => return Err(error.to_string()),
+	}
+	std::fs::create_dir_all(path).map_err(|error| error.to_string())
+}
 #[allow(dead_code)]
 fn package_windows(root: &std::path::Path, import_alias: Option<&str>) -> Result<(), String> {
+	let installer_dir = PathBuf::from("dist-installer");
+	prepare_installer_output(&installer_dir)?;
 	let nsis_candidates = [
 		PathBuf::from("makensis"),
 		PathBuf::from("makensis.exe"),
@@ -205,8 +215,6 @@ fn package_windows(root: &std::path::Path, import_alias: Option<&str>) -> Result
 	});
 
 	if let Some(makensis) = makensis {
-		let installer_dir = PathBuf::from("dist-installer");
-		std::fs::create_dir_all(&installer_dir).map_err(|e| e.to_string())?;
 		let version = env!("CARGO_PKG_VERSION");
 		let file_version = version.split('-').next().unwrap_or(version);
 		let mut arguments = vec![
@@ -577,5 +585,37 @@ fn main() -> ExitCode {
 			eprintln!("{error}");
 			ExitCode::FAILURE
 		}
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::prepare_installer_output;
+	use std::time::{SystemTime, UNIX_EPOCH};
+
+	#[test]
+	fn installer_output_discards_stale_setup_files() {
+		let nonce = SystemTime::now()
+			.duration_since(UNIX_EPOCH)
+			.expect("system clock should be after the Unix epoch")
+			.as_nanos();
+		let root = std::env::temp_dir().join(format!(
+			"evita-xtask-installer-{}-{nonce}",
+			std::process::id()
+		));
+		let output = root.join("dist-installer");
+		std::fs::create_dir_all(&output).expect("create output directory");
+		std::fs::write(output.join("evita-0.1.0-setup.exe"), b"stale fixture")
+			.expect("create stale installer fixture");
+
+		prepare_installer_output(&output).expect("prepare fresh installer output");
+		assert_eq!(
+			std::fs::read_dir(&output)
+				.expect("read output directory")
+				.count(),
+			0
+		);
+
+		std::fs::remove_dir_all(root).expect("remove temporary test directory");
 	}
 }

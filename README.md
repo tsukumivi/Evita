@@ -56,7 +56,7 @@ To rebuild the installer, install Rust 1.98.1 with the MSVC toolchain, Visual St
 cargo xtask package
 ```
 
-The build places the Windows app and its required runtime files in `dist/` and, when `makensis` is available, creates a versioned setup file in `dist-installer/` (for example, `evita-1.0.0-setup.exe`). Run that setup file to install Evita for the current Windows user without administrator access. For a portable copy, keep the full `dist/` folder together so `WebView2Loader.dll` and any toolchain import alias remain beside `evita.exe`.
+The build places the Windows app and its required runtime files in `dist/` and, when `makensis` is available, creates a versioned setup file in `dist-installer/` (for example, `evita-<version>-setup.exe`). Run that setup file to install Evita for the current Windows user without administrator access. For a portable copy, keep the full `dist/` folder together so `WebView2Loader.dll` and any toolchain import alias remain beside `evita.exe`.
 
 For a development launch, use `cargo run --locked`. The demo command uses only synthetic data: `cargo run --locked --features demo -- --demo`.
 

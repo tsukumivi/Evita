@@ -92,8 +92,8 @@ body:
     id: version
     attributes:
       label: Evita Version / Commit Hash
-      description: Release tag or git commit hash (e.g. `v0.1.0` or `36b5336`). Found in **Settings → Updates** or copied via **"Copy issue diagnostics"**.
-      placeholder: "e.g. 0.1.0"
+      description: Release tag or git commit hash (e.g. `v1.2.3` or `36b5336`). Found in **Settings → Updates** or copied via **"Copy issue diagnostics"**.
+      placeholder: "e.g. v1.2.3"
     validations:
       required: true
 

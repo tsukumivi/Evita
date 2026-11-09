@@ -136,6 +136,10 @@ jobs:
         with:
           bun-version: 1.4.2
       - run: bun tests/login-handoff.cjs
+      - name: Clear stale Windows installer output
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Remove-Item -LiteralPath 'dist-installer' -Recurse -Force -ErrorAction SilentlyContinue
       - name: Package app
         run: |
           cargo xtask package
@@ -159,10 +163,11 @@ jobs:
         shell: pwsh
         run: |
           Compress-Archive -Path "$env:PACKAGE_ROOT/*" -DestinationPath "release-assets/$env:ASSET.zip"
-          $installer = Get-ChildItem -Path "dist-installer/*-setup.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
-          if ($installer) {
-            Copy-Item -LiteralPath $installer.FullName -Destination "release-assets/$env:ASSET-Setup.exe"
+          $installer = Join-Path 'dist-installer' "evita-$env:VERSION-setup.exe"
+          if (-not (Test-Path -LiteralPath $installer -PathType Leaf)) {
+            throw "Expected Windows installer for release version $env:VERSION was not produced: $installer"
           }
+          Copy-Item -LiteralPath $installer -Destination "release-assets/$env:ASSET-Setup.exe"
       - uses: actions/upload-artifact@v7.0.1
         with:
           name: ${{ env.ASSET }}
