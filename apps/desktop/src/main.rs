@@ -34,6 +34,7 @@ mod gpu;
 mod gpu_video;
 mod group_icon;
 mod interaction_uploads;
+mod name_fonts;
 mod notification_runtime;
 mod notification_sounds;
 #[cfg(feature = "demo")]
@@ -6442,6 +6443,7 @@ impl eframe::App for Desktop {
 				self.messaging.notification_sound_status = "Could not save device notification settings. Changes apply only until restart.";
 			}
 			let mut commands = self.messaging.show(ui, &mut self.state);
+			name_fonts::load_requested(&self.runtime, &ctx);
 			self.extensions.cancel_stale_message_events(&self.state);
 			self.choose_interaction_files(&ctx);
 			if let Some(command) = self.captcha.sync(

@@ -114,17 +114,23 @@ establish it.
   the one-to-one DM list.
 - **Name styles (Nitro display-name styles):** `display_name_styles` on user and guild
   member objects (`font_id`, `effect_id`, `colors`), with a member's value overriding the
-  user's in that server. The shape and the font and effect ids come from the official web
-  client's public JavaScript (October 15, 2026); this is unofficial and live delivery is
-  unverified. One to four 0xRRGGBB colours are accepted; anything else drops the style.
-  Gradient effects spread every colour evenly across the name.
-  Effects 1–8 (solid, gradient, neon, toon, pop, glow, prism, gummy) are drawn as still
-  approximations: gradients across the name, and halo, outline or shadow layers behind it.
-  Discord's animations are not reproduced. Fonts 1–16 except 7 use bundled OFL faces with
-  the same family names (see `assets/README.md`); Néo-Castel (7), Hexagon (17), Default (11)
-  and unknown ids keep the interface font. The bundled files may differ from the builds
-  Discord serves. Chat, member and search rows show the colours and effect while the row is
-  hovered; profile cards and the account panel always show them.
+  user's in that server. The object shape and numeric font/effect ids were observed in the
+  official web client's public JavaScript (October 15, 2026); this is unofficial and live
+  delivery is unverified. One to five 0xRRGGBB colours are accepted. The official FAQ says
+  Gradient uses two colors and Prism uses five. Gradient and Prism colors are interpolated
+  across the name. The official FAQ lists Solid, Gradient, Neon, Toon, Pop, Gummy and Prism;
+  the previously observed client enum also had Glow (id 6), so Evita retains that mapping
+  pending a current live sample.
+  Combining the previously observed font-id mapping with the current [public CSS chunk](https://discord.com/assets/327545.2695bf02ce58802d.css), Evita identifies IDs 3, 4, 6, 7, 8, 10, 12, 13, 14, 15 and 16 as Sakura, Jellybean, Modern, Medieval, 8Bit, Vampyre, Tempo, Monkey Bars, Mainframe, Headbang and Journal.
+  Evita fetches their WOFF2 faces from fixed public `discord.com/assets` URLs without an account token, only when a visible styled name needs one. WOFF2 decoding and validation run off the UI thread. Font IDs 1, 2, 5 and 9 have no corresponding face in the current public stylesheet; Default (11), Hexagon (17), unknown ids and failed downloads use the interface font.
+  The stylesheet includes a Pricedown face, but no current font-id mapping was found, so Evita does not guess which ID should use it. Discord can change these public asset hashes or mappings without notice.
+
+  Solid colors, multi-stop gradients and static halo/outline/shadow approximations are drawn
+  locally. Animated effects are not reproduced; the account's animation payload is not
+  modeled because its live shape has not been verified. Profiles and the account panel show
+  color/effect styles continuously. DM and message rows show them on hover. Server member rows
+  show the display-name font while preserving server role colors/effects, matching the official
+  FAQ. Search rows continue to show their styles on hover.
 - **Profile effects and frames:** profile responses list them in `user_profile` and
   `guild_member_profile` `collectibles` (type 1 = effect, 3 = frame). The older
   `profile_effect.id` is accepted as the effect SKU, and a server profile's own values

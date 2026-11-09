@@ -35,7 +35,9 @@ Test detail: egui 0.36.2's [`Font::has_glyph`](https://github.com/emilk/egui/blo
 
 ### Display-name fonts
 
-Discord's Nitro display-name styles name a font by id. Evita bundles unmodified SIL Open Font License 1.1 faces for 14 of them, used only when Settings › Appearance › name styles is on. Each face is embedded in the executable but parsed only the first time a visible styled name uses it; there is no runtime font download. Variable faces render at weight 500. Néo-Castel (id 7) is distributed only through a store checkout and Hexagon (id 17) has no identified source, so those names, Default (id 11) and unknown ids keep the interface font. Whether each face matches the exact build Discord serves is unverified.
+Discord's public stylesheet currently maps display-name font classes to the WOFF2 assets described in the compatibility notes. Evita downloads supported font assets from `discord.com/assets/` only when a visible display-name style needs one. Requests are unauthenticated, do not include the Discord session token and are not saved to disk. WOFF2 decode runs off the UI thread; the decoded face stays in the in-memory egui font cache until Evita exits. A missing asset or unsupported font id uses Evita's interface font.
+
+Discord does not publish a redistribution license for these files in the stylesheet, so Evita does not bundle them. The SIL Open Font License files in this table are legacy comparison fonts retained in the source tree; Evita no longer embeds them for display-name styles.
 
 | Asset | Discord font id | Bytes | Copyright and license |
 |---|---:|---:|---|
@@ -71,7 +73,7 @@ Downloaded October 15, 2026 from pinned upstream sources. Variable-font filename
 - [New Rocker](https://github.com/google/fonts/blob/b7c8331cf620346575487ef8db0e2c729f014675/ofl/newrocker/NewRocker-Regular.ttf), [license](https://github.com/google/fonts/blob/b7c8331cf620346575487ef8db0e2c729f014675/ofl/newrocker/OFL.txt). SHA-256: `28a499ce5b8bcf0652f8b2e25135183eaddf0c3c8c3e251259b075c71d1ef14c`.
 - [Kalam](https://github.com/google/fonts/blob/b7c8331cf620346575487ef8db0e2c729f014675/ofl/kalam/Kalam-Regular.ttf), [license](https://github.com/google/fonts/blob/b7c8331cf620346575487ef8db0e2c729f014675/ofl/kalam/OFL.txt). SHA-256: `57cecb63d4608019371954274ae1d8c397764debd5b19d4a33c1efa4dc923c0b`.
 
-The 14 display-name faces total **3,493,132 bytes (3.33 MiB)**, asserted below 4 MiB by `cargo test -p ui name_fonts`.
+The 14 legacy display-name faces total **3,493,132 bytes (3.33 MiB)** in the source tree. They are no longer embedded into Evita's executable.
 
 ## Icons
 

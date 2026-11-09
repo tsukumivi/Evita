@@ -1,5 +1,4 @@
-//! Nitro display name styles: the account's colours and effect drawn on a name, opt-in like
-//! the other profile cosmetics. Bundled OFL faces stand in for Discord's name fonts.
+//! Nitro display name styles: Discord-hosted fonts with local color/effect rendering.
 use egui::{Color32, Galley, Pos2, Shape, Ui, vec2};
 use model::{NameEffect, NameStyle, server_roles::Colors};
 use std::sync::{
@@ -14,8 +13,8 @@ thread_local! {
 	static ROW_HOVER: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
-/// Runs `add` as part of a row (member, message, search hit) the pointer is over, so a styled
-/// name inside it shows its colours and effect for the whole row, like Discord's.
+/// Runs `add` as part of a hovered message, DM row or search hit so a styled name can show its
+/// colours and effect for that interaction. Server member rows use role colours instead.
 pub(crate) fn in_row<R>(hovered: bool, add: impl FnOnce() -> R) -> R {
 	let before = ROW_HOVER.replace(hovered);
 	let result = add();
@@ -53,6 +52,41 @@ pub(crate) fn label(
 	sense: egui::Sense,
 	always: bool,
 ) -> egui::Response {
+	label_with_mode(
+		ui, style, text, font, colors, background, fallback, sense, always, false,
+	)
+}
+
+/// Discord server member lists show the display-name font but keep server role colors/effects.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn server_member_label(
+	ui: &mut Ui,
+	style: Option<&NameStyle>,
+	text: &str,
+	font: egui::FontId,
+	colors: Option<Colors>,
+	background: Color32,
+	fallback: Color32,
+	sense: egui::Sense,
+) -> egui::Response {
+	label_with_mode(
+		ui, style, text, font, colors, background, fallback, sense, false, true,
+	)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn label_with_mode(
+	ui: &mut Ui,
+	style: Option<&NameStyle>,
+	text: &str,
+	font: egui::FontId,
+	colors: Option<Colors>,
+	background: Color32,
+	fallback: Color32,
+	sense: egui::Sense,
+	always: bool,
+	server_member: bool,
+) -> egui::Response {
 	let width = ui.available_width();
 	let Some(style) = style else {
 		let galley = crate::role_names::galley(ui, text, font, colors, background, fallback, width);
@@ -72,7 +106,7 @@ pub(crate) fn label(
 		crate::role_names::galley(ui, text, font.clone(), colors, background, fallback, width);
 	let (rect, mut response) = ui.allocate_exact_size(vec2(plain.size().x, row), sense);
 	// `contains_pointer` ignores the row or message widget that sits over the name.
-	let styled = always || ROW_HOVER.get() || response.contains_pointer();
+	let styled = !server_member && (always || ROW_HOVER.get() || response.contains_pointer());
 	let galley = if styled {
 		crate::role_names::gradient(
 			ui,
@@ -158,4 +192,58 @@ pub(crate) fn paint_backdrop(
 ) {
 	ui.painter()
 		.set(layer, Shape::Vec(backdrop(style, galley, pos)));
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn server_member_name_keeps_role_color_even_when_its_row_is_hovered() {
+		let ctx = egui::Context::default();
+		crate::fonts::install(&ctx);
+		let style = NameStyle {
+			font: 11,
+			effect: NameEffect::Neon,
+			colors: vec![0xff0000],
+		};
+		let mut output = ctx.run_ui(Default::default(), |ui| {
+			in_row(true, || {
+				server_member_label(
+					ui,
+					Some(&style),
+					"Synthetic member",
+					egui::FontId::proportional(15.0),
+					Some(Colors {
+						primary: 0x00ff00,
+						secondary: None,
+						tertiary: None,
+					}),
+					Color32::BLACK,
+					Color32::WHITE,
+					egui::Sense::hover(),
+				);
+			});
+		});
+		let galley = output
+			.shapes
+			.iter()
+			.find_map(|clipped| match &clipped.shape {
+				egui::Shape::Text(text) if text.galley.job.text == "Synthetic member" => {
+					Some(text.galley.clone())
+				}
+				_ => None,
+			})
+			.expect("painted member name");
+		let expected = crate::design::role_name_color(0x00ff00, Color32::BLACK, Color32::WHITE);
+		assert!(
+			galley
+				.rows
+				.iter()
+				.flat_map(|row| &row.row.visuals.mesh.vertices)
+				.all(|vertex| vertex.color == expected)
+		);
+		output.textures_delta.clear();
+		output.drop_without_applying_deltas();
+	}
 }
