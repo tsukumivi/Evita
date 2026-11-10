@@ -2054,6 +2054,7 @@ dependencies = [
  "discord-protocol",
  "discord-voice",
  "eframe",
+ "egui",
  "egui-winit",
  "extensions",
  "find-msvc-tools",

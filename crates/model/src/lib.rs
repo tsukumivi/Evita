@@ -8,8 +8,12 @@ pub mod registered_games;
 pub use image_sharing::ImageShare;
 pub mod archives;
 mod channel_preferences;
+mod emoji_favorites;
 pub mod keybinds;
 pub mod messaging_permissions;
+pub use emoji_favorites::{
+	EmojiFavorite, MAX_EMOJI_FAVORITES, emoji_favorite_bytes, valid_emoji_favorites,
+};
 pub mod notification_preferences;
 pub mod onboarding;
 pub mod voice_settings;

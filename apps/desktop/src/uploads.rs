@@ -14,6 +14,7 @@ use tokio::sync::watch;
 pub struct UploadRequest {
 	pub command: Command,
 	pub source: Vec<Source>,
+	pub voice: Option<discord_api::upload::VoiceMessageMetadata>,
 	pub progress: watch::Sender<Status>,
 	pub cancel: watch::Sender<bool>,
 }
@@ -388,6 +389,7 @@ struct FailedSend {
 	generation: u64,
 	channel: Id,
 	sources: Vec<Source>,
+	voice: Option<discord_api::upload::VoiceMessageMetadata>,
 }
 impl FailedSend {
 	fn retained_memory_bytes(&self) -> u64 {
@@ -1080,6 +1082,7 @@ impl Uploads {
 		generation: u64,
 		channel: Id,
 		nonce: &str,
+		voice: Option<discord_api::upload::VoiceMessageMetadata>,
 	) -> Option<Vec<Source>> {
 		if self.scope != Some((generation, channel)) || self.busy() || self.selected.is_empty() {
 			return None;
@@ -1094,6 +1097,7 @@ impl Uploads {
 			generation,
 			channel,
 			sources: sources.clone(),
+			voice,
 		};
 		if failed.retained_memory_bytes() <= RETRY_MEMORY_BYTES {
 			self.failed_sends.retain(|entry| entry.nonce != nonce);
@@ -1127,7 +1131,7 @@ impl Uploads {
 		channel: Id,
 		runtime: &tokio::runtime::Handle,
 		context: &egui::Context,
-	) -> Result<(), &'static str> {
+	) -> Result<Option<discord_api::upload::VoiceMessageMetadata>, &'static str> {
 		if self.busy() || !self.selected.is_empty() {
 			return Err("Clear the current attachment selection before retrying this message");
 		}
@@ -1171,7 +1175,7 @@ impl Uploads {
 				self.previewing.push((key, receive));
 			}
 		}
-		Ok(())
+		Ok(failed.voice)
 	}
 	pub fn begin_upload(
 		&mut self,
@@ -1938,7 +1942,7 @@ mod tests {
 		uploads.push(Source::pasted_png(vec![1, 2, 3]).unwrap(), None);
 		assert_eq!(
 			uploads
-				.take_source_for_message(7, Id(1), "definite-failure")
+				.take_source_for_message(7, Id(1), "definite-failure", None)
 				.unwrap()
 				.len(),
 			1
@@ -1950,7 +1954,7 @@ mod tests {
 		assert_eq!(uploads.files()[0].0, "pasted-image.png");
 
 		let sources = uploads
-			.take_source_for_message(7, Id(1), "ambiguous")
+			.take_source_for_message(7, Id(1), "ambiguous", None)
 			.unwrap();
 		assert_eq!(sources.len(), 1);
 		uploads.finish_message("ambiguous", false, true);
@@ -1959,6 +1963,31 @@ mod tests {
 				.restore_failed_send("ambiguous", 7, Id(1), &runtime, &context)
 				.is_err()
 		);
+
+		let mut voice = Uploads::default();
+		voice.scope = Some((7, Id(1)));
+		voice.push(
+			Source::recorded_voice([b"OggS".as_slice(), &[0; 60]].concat()).unwrap(),
+			None,
+		);
+		let metadata = discord_api::upload::VoiceMessageMetadata {
+			duration_secs: 1.25,
+			waveform: "AQID".into(),
+		};
+		assert_eq!(
+			voice
+				.take_source_for_message(7, Id(1), "voice-failure", Some(metadata.clone()))
+				.unwrap()
+				.len(),
+			1
+		);
+		voice.finish_message("voice-failure", false, false);
+		let restored = voice
+			.restore_failed_send("voice-failure", 7, Id(1), &runtime, &context)
+			.unwrap()
+			.unwrap();
+		assert_eq!(restored.duration_secs, metadata.duration_secs);
+		assert_eq!(restored.waveform, metadata.waveform);
 	}
 }
 

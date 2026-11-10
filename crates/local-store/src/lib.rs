@@ -11,8 +11,8 @@ use std::{
 
 const MAX_MEDIA_JSON: usize = 256 * 1024;
 const MAX_WINDOW_BYTES: usize = 4 * 1024 * 1024;
-const NATIVE_SCHEMA: u32 = 29;
-const READABLE_SCHEMA: u32 = 29;
+const NATIVE_SCHEMA: u32 = 30;
+const READABLE_SCHEMA: u32 = 30;
 #[derive(serde::Deserialize)]
 struct CachedMentions(#[serde(deserialize_with = "model::deserialize_mentions")] Vec<User>);
 fn parse_author_roles(raw: &str) -> std::result::Result<Vec<Id>, StoreError> {
@@ -323,6 +323,7 @@ impl LocalStore {
             CREATE TABLE IF NOT EXISTS theme_variant(singleton INTEGER PRIMARY KEY CHECK(singleton=1),variant TEXT NOT NULL CHECK(length(variant) BETWEEN 1 AND 32));
             CREATE TABLE IF NOT EXISTS gif_favorites(account TEXT NOT NULL,position INTEGER NOT NULL CHECK(typeof(position)='integer' AND position BETWEEN 0 AND 99),id TEXT NOT NULL CHECK(length(id) BETWEEN 1 AND 64),title TEXT NOT NULL CHECK(length(title) <= 256),url TEXT NOT NULL CHECK(length(url) BETWEEN 1 AND 512),preview TEXT NOT NULL CHECK(length(preview) BETWEEN 1 AND 512),width INTEGER NOT NULL CHECK(typeof(width)='integer' AND width BETWEEN 1 AND 4096),height INTEGER NOT NULL CHECK(typeof(height)='integer' AND height BETWEEN 1 AND 4096),PRIMARY KEY(account,position));
             CREATE TABLE IF NOT EXISTS sticker_favorites(account TEXT NOT NULL,position INTEGER NOT NULL CHECK(typeof(position)='integer' AND position BETWEEN 0 AND 99),id TEXT NOT NULL CHECK(length(id) BETWEEN 1 AND 20),name TEXT NOT NULL CHECK(length(name) BETWEEN 1 AND 120),description TEXT NOT NULL CHECK(length(description) <= 4096),tags TEXT NOT NULL CHECK(length(tags) <= 1024),format_type INTEGER NOT NULL CHECK(format_type BETWEEN 0 AND 255),guild_id TEXT,pack_id TEXT,available INTEGER NOT NULL CHECK(available IN (0,1)),PRIMARY KEY(account,position),UNIQUE(account,id));
+            CREATE TABLE IF NOT EXISTS emoji_favorites(account TEXT NOT NULL,position INTEGER NOT NULL CHECK(typeof(position)='integer' AND position BETWEEN 0 AND 99),id TEXT CHECK(id IS NULL OR length(id) BETWEEN 1 AND 20),name TEXT NOT NULL CHECK(length(CAST(name AS BLOB)) BETWEEN 1 AND 128),animated INTEGER NOT NULL CHECK(animated IN (0,1)),PRIMARY KEY(account,position));
             ")?;
 		let has_avatar: bool = connection.query_row(
 			"SELECT EXISTS(SELECT 1 FROM pragma_table_info('messages') WHERE name='avatar')",
@@ -1647,6 +1648,69 @@ impl LocalStore {
 					sticker.guild_id.map(|id| id.to_string()),
 					sticker.pack_id.map(|id| id.to_string()),
 					sticker.available,
+				],
+			)?;
+		}
+		transaction.commit()?;
+		Ok(())
+	}
+	/// Saved Unicode and custom emoji favorites for one account, newest first.
+	pub fn emoji_favorites(&self, account: Id) -> Result<Vec<model::EmojiFavorite>> {
+		let mut statement = self.0.prepare(
+			"SELECT id,name,animated FROM emoji_favorites WHERE account=?1 ORDER BY position LIMIT 100",
+		)?;
+		let rows = statement.query_map([account.to_string()], |row| {
+			Ok((
+				row.get::<_, Option<String>>(0)?,
+				row.get::<_, String>(1)?,
+				row.get::<_, bool>(2)?,
+			))
+		})?;
+		let mut favorites = Vec::new();
+		for row in rows {
+			let (id, name, animated) = row?;
+			let id = match id {
+				Some(value) => match value.parse::<Id>() {
+					Ok(id) => Some(id),
+					Err(_) => continue,
+				},
+				None => None,
+			};
+			let favorite = model::EmojiFavorite { id, name, animated };
+			if favorite.valid()
+				&& favorites.len() < model::MAX_EMOJI_FAVORITES
+				&& !favorites
+					.iter()
+					.any(|known: &model::EmojiFavorite| known.same(&favorite))
+			{
+				favorites.push(favorite);
+			}
+		}
+		Ok(favorites)
+	}
+	/// Replaces one account's bounded emoji favorites atomically.
+	pub fn save_emoji_favorites(
+		&mut self,
+		account: Id,
+		favorites: &[model::EmojiFavorite],
+	) -> Result<()> {
+		if !model::valid_emoji_favorites(favorites) {
+			return Err(StoreError::Capacity);
+		}
+		let transaction = self.0.transaction()?;
+		transaction.execute(
+			"DELETE FROM emoji_favorites WHERE account=?1",
+			[account.to_string()],
+		)?;
+		for (position, favorite) in favorites.iter().enumerate() {
+			transaction.execute(
+				"INSERT INTO emoji_favorites VALUES(?1,?2,?3,?4,?5)",
+				rusqlite::params![
+					account.to_string(),
+					position as i64,
+					favorite.id.map(|id| id.to_string()),
+					favorite.name,
+					favorite.animated,
 				],
 			)?;
 		}
@@ -3100,6 +3164,28 @@ mod tests {
 		assert!(store.sticker_favorites(Id(2)).unwrap().is_empty());
 		store.save_sticker_favorites(Id(1), &[]).unwrap();
 		assert!(store.sticker_favorites(Id(1)).unwrap().is_empty());
+	}
+
+	#[test]
+	fn emoji_favorites_round_trip_and_remain_account_isolated() {
+		let mut store = LocalStore::initialize(Connection::open_in_memory().unwrap()).unwrap();
+		let favorites = vec![
+			model::EmojiFavorite {
+				id: None,
+				name: "🫶".into(),
+				animated: false,
+			},
+			model::EmojiFavorite {
+				id: Some(Id(42)),
+				name: "wave".into(),
+				animated: true,
+			},
+		];
+		store.save_emoji_favorites(Id(1), &favorites).unwrap();
+		assert_eq!(store.emoji_favorites(Id(1)).unwrap(), favorites);
+		assert!(store.emoji_favorites(Id(2)).unwrap().is_empty());
+		store.save_emoji_favorites(Id(1), &[]).unwrap();
+		assert!(store.emoji_favorites(Id(1)).unwrap().is_empty());
 	}
 
 	#[test]

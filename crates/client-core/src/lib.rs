@@ -4,6 +4,7 @@ pub mod archives;
 pub mod auth;
 pub mod captcha;
 pub mod channel_actions;
+pub mod emoji_favorites;
 pub mod fingerprint;
 pub mod forum;
 pub mod game_mentions;
@@ -754,6 +755,7 @@ pub struct State {
 	/// The signed-in account's Discord `premium_type`; 0 until READY reports one.
 	pub premium_type: u8,
 	pub stickers: stickers::Stickers,
+	pub emoji_favorites: emoji_favorites::Favorites,
 	pub interactions: interactions::Interactions,
 	pub application_commands: application_commands::Catalog,
 	pub game_mentions: game_mentions::Catalog,
@@ -1002,6 +1004,7 @@ impl Default for State {
 		Self {
 			premium_type: 0,
 			stickers: Default::default(),
+			emoji_favorites: Default::default(),
 			interactions: Default::default(),
 			application_commands: Default::default(),
 			messaging_permissions: Default::default(),

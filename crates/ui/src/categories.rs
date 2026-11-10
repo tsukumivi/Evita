@@ -1041,8 +1041,9 @@ impl MessagingUi {
 									label.size().x + 12.0
 								});
 							let request = slot == Slot::Request;
+							let close_dm = dm_list && channel.guild.is_none() && channel.kind == 1;
 							let trailing = badge_width
-								+ if external.is_some() || request {
+								+ if external.is_some() || request || close_dm {
 									30.0
 								} else {
 									0.0
@@ -1169,21 +1170,34 @@ impl MessagingUi {
 							if !enabled && visible {
 								label.push_str(" · unavailable");
 							}
-							let subtitle = if dm_list && channel.kind == 1 {
-								channel.recipients.first().and_then(|user| {
-									let (_, custom, activities, _) =
-										crate::profiles::presence(state, user.id, None);
-									crate::profiles::subtitle(custom, activities)
-								})
-							} else {
-								(dm_list && channel.kind == 3).then(|| {
-									format!(
-										"{} {}",
-										channel.recipients.len() + 1,
-										language.text("members-count")
+							let (subtitle, activity_tip, activities) =
+								if dm_list && channel.kind == 1 {
+									channel
+										.recipients
+										.first()
+										.map(|user| {
+											let (_, custom, activities, _) =
+												crate::profiles::presence(state, user.id, None);
+											(
+												custom.map(str::to_owned),
+												crate::profiles::activity_tooltip(activities),
+												activities,
+											)
+										})
+										.unwrap_or((None, None, &[][..]))
+								} else {
+									(
+										(dm_list && channel.kind == 3).then(|| {
+											format!(
+												"{} {}",
+												channel.recipients.len() + 1,
+												language.text("members-count")
+											)
+										}),
+										None,
+										&[][..],
 									)
-								})
-							};
+								};
 							let direct_user = (dm_list && channel.kind == 1)
 								.then(|| channel.recipients.first())
 								.flatten();
@@ -1232,7 +1246,7 @@ impl MessagingUi {
 									},
 								);
 							};
-							if subtitle.is_some() || in_voice {
+							if subtitle.is_some() || activity_tip.is_some() || in_voice {
 								inner.allocate_ui_with_layout(
 									egui::vec2(inner.available_width(), 32.0),
 									egui::Layout::top_down(egui::Align::Min),
@@ -1245,8 +1259,17 @@ impl MessagingUi {
 											crate::profiles::voice_badge(
 												ui,
 												in_voice,
-												subtitle.is_some(),
+												subtitle.is_some() || activity_tip.is_some(),
 											);
+											if activity_tip.is_some() {
+												crate::profiles::activity_badge(
+													ui,
+													ui.scope_id().with(("dm-activity", channel.id)),
+													activities,
+													13.0,
+													colors.muted,
+												);
+											}
 											if let Some(subtitle) = subtitle {
 												ui.add(
 													egui::Label::new(
@@ -1265,6 +1288,7 @@ impl MessagingUi {
 								show_name(&mut inner);
 							}
 							let lane = channel_marks::trailing(access);
+							let mut close_clicked = false;
 							if let Some(url) = &external {
 								let mut open = ui.new_child(
 									egui::UiBuilder::new()
@@ -1283,6 +1307,27 @@ impl MessagingUi {
 								.clicked()
 								{
 									self.timeline.browser_opening = Some(url.clone());
+								}
+							}
+							if close_dm && (hovered || active) {
+								let mut close = ui.new_child(
+									egui::UiBuilder::new()
+										.max_rect(egui::Rect::from_center_size(
+											row.right_center() - egui::vec2(18.0 + lane, 0.0),
+											egui::Vec2::splat(28.0),
+										))
+										.layout(egui::Layout::left_to_right(egui::Align::Center)),
+								);
+								close_clicked = crate::icons::button(
+									&mut close,
+									crate::icons::Icon::Close,
+									28.0,
+									&crate::i18n::translate("user-menu-contents-close-dm"),
+								)
+								.clicked();
+								if close_clicked {
+									self.user_action =
+										Some(crate::user_menu::Action::CloseDm(channel.id));
 								}
 							}
 							if request {
@@ -1320,7 +1365,7 @@ impl MessagingUi {
 									row.right_center()
 										- egui::vec2(
 											20.0 + lane
-												+ if external.is_some() || request {
+												+ if external.is_some() || request || close_dm {
 													30.0
 												} else {
 													0.0
@@ -1403,7 +1448,7 @@ impl MessagingUi {
 							if enabled {
 								self.preload.conversation(&response, || Some(channel.id));
 							}
-							if enabled && response.clicked() {
+							if enabled && response.clicked() && !close_clicked {
 								selected = Some(channel.id);
 							}
 							if !enabled
@@ -1673,6 +1718,81 @@ mod tests {
 			!click(egui::pos2(120.0, 22.0)),
 			"the caption itself is not a button"
 		);
+	}
+
+	#[test]
+	fn active_direct_message_exposes_a_close_button_that_does_not_open_the_row() {
+		let mut state = test_support::demo_state();
+		let dm = state
+			.channels
+			.iter()
+			.find(|channel| channel.kind == 1 && channel.guild.is_none())
+			.unwrap()
+			.clone();
+		state
+			.channels
+			.retain(|channel| channel.guild.is_some() || channel.id == dm.id);
+		state.selected = Some(dm.id);
+		state.invalidate_navigation();
+		let mut view = MessagingUi::default();
+		let ctx = egui::Context::default();
+		ctx.enable_accesskit();
+		const WIDTH: f32 = 360.0;
+		const HEIGHT: f32 = 300.0;
+		let frame = |view: &mut MessagingUi, state: &mut State, events| {
+			ctx.run_ui(
+				egui::RawInput {
+					screen_rect: Some(egui::Rect::from_min_size(
+						egui::Pos2::ZERO,
+						egui::vec2(WIDTH, HEIGHT),
+					)),
+					events,
+					..Default::default()
+				},
+				|ui| {
+					view.channel_list(ui, state);
+				},
+			)
+		};
+		let output = frame(&mut view, &mut state, vec![]);
+		let target = output
+			.platform_output
+			.accesskit_update
+			.as_ref()
+			.unwrap()
+			.nodes
+			.iter()
+			.find_map(|(_, node)| {
+				(node.label() == Some("Close DM"))
+					.then(|| node.bounds())
+					.flatten()
+			})
+			.expect("active DM rows expose a labeled close action");
+		let target = egui::pos2(
+			((target.x0 + target.x1) * 0.5) as f32,
+			((target.y0 + target.y1) * 0.5) as f32,
+		);
+		output.drop_without_applying_deltas();
+		for pressed in [true, false] {
+			frame(
+				&mut view,
+				&mut state,
+				vec![
+					egui::Event::PointerMoved(target),
+					egui::Event::PointerButton {
+						pos: target,
+						button: egui::PointerButton::Primary,
+						pressed,
+						modifiers: egui::Modifiers::NONE,
+					},
+				],
+			)
+			.drop_without_applying_deltas();
+		}
+		assert!(
+			matches!(view.user_action, Some(crate::user_menu::Action::CloseDm(id)) if id == dm.id)
+		);
+		assert_eq!(state.selected, Some(dm.id));
 	}
 
 	#[test]

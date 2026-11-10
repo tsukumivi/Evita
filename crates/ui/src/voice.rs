@@ -2461,10 +2461,12 @@ impl MessagingUi {
 				}
 			});
 			if self.voice_preview_requested || active {
-				let db = self.voice_preview_level.unwrap_or(-100.0);
+				let level = self
+					.voice_preview_level
+					.map_or_else(|| "—".to_owned(), |db| format!("{db:.0} dBFS"));
 				ui.label(
 					RichText::new(format!(
-						"{} {db:.0} dBFS",
+						"{} {level}",
 						crate::i18n::translate("voice-microphone-preview-controls-input-level")
 					))
 					.size(13.0)
@@ -2891,19 +2893,35 @@ impl MessagingUi {
 				design::slider(ui, db, -80..=0, " dBFS");
 			}
 			if let Some(level) = self.voice_preview_level {
-				ui.add(
-					egui::ProgressBar::new(((level + 80.0) / 80.0).clamp(0.0, 1.0))
-						.text(format!("Input level: {level:.0} dBFS"))
-						.fill(
-							if processing
-								.sensitivity_db
-								.is_none_or(|threshold| level >= f32::from(threshold))
-							{
-								colors.positive
-							} else {
-								colors.warning
-							},
+				let amount = ((level + 80.0) / 80.0).clamp(0.0, 1.0);
+				let (rect, _) = ui.allocate_exact_size(
+					egui::vec2(ui.available_width(), 10.0),
+					egui::Sense::hover(),
+				);
+				ui.painter().rect_filled(rect, 5.0, colors.border);
+				if amount > 0.0 {
+					let fill = if processing
+						.sensitivity_db
+						.is_none_or(|threshold| level >= f32::from(threshold))
+					{
+						colors.positive
+					} else {
+						colors.warning
+					};
+					ui.painter().rect_filled(
+						egui::Rect::from_min_max(
+							rect.min,
+							egui::pos2(rect.left() + rect.width() * amount, rect.bottom()),
 						),
+						5.0,
+						fill,
+					);
+				}
+				ui.add_space(6.0);
+				ui.label(
+					RichText::new(format!("Input level: {level:.0} dBFS"))
+						.size(13.0)
+						.color(colors.muted),
 				);
 			} else {
 				design::hint(
