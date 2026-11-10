@@ -1,6 +1,5 @@
 //! Explicit, bounded microphone recording for native voice messages.
 //! Audio is held in memory only and is cleared when canceled or after upload.
-use cpal::Sample;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use std::{
 	sync::{

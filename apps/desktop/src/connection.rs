@@ -469,14 +469,15 @@ impl Connection {
 								let crate::uploads::UploadRequest {command,source,voice,progress,cancel}=request;
 								let mut updates=progress.subscribe();
 								let cancelled=cancel.subscribe();
+				let operation_api=api.clone();
 								let operation=async move {
 									match voice {
 										Some(metadata)=>if let [source]=source.as_slice() {
-											api.upload_voice_message(command,source.clone(),metadata,progress,cancelled).await
+							operation_api.upload_voice_message(command,source.clone(),metadata,progress,cancelled).await
 										} else {
 											Event::Failure(Failure::ProtocolAt("Invalid voice-message upload"))
 										},
-										None=>api.upload_messages(command,source,progress,cancelled).await,
+						None=>operation_api.upload_messages(command,source,progress,cancelled).await,
 									}
 								};
                                 tokio::pin!(operation);
