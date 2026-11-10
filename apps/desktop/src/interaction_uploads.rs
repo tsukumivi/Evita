@@ -148,6 +148,7 @@ impl Desktop {
 		let request = crate::uploads::UploadRequest {
 			command,
 			source: sources,
+			voice: None,
 			progress,
 			cancel,
 		};

@@ -1471,8 +1471,10 @@ impl Voice {
 			self.mic_preview = None;
 			return;
 		}
-		ui.voice_preview_level = Some(preview.audio.preview_level_db());
-		ui.voice_preview_status = if preview.audio.microphone_unavailable() {
+		let microphone_unavailable = preview.audio.microphone_unavailable();
+		ui.voice_preview_level =
+			(!microphone_unavailable).then(|| preview.audio.preview_level_db());
+		ui.voice_preview_status = if microphone_unavailable {
 			"Microphone unavailable; check permission or choose another input. Retrying…"
 		} else if preview.audio.is_ready() {
 			"Playing your microphone through the selected speakers."

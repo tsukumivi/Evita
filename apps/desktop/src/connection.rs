@@ -466,8 +466,19 @@ impl Connection {
                             let api=api.clone();let emit=emit.clone();let finished=finished.clone();let wake=wake.clone();
                             upload=Some(AbortTask(tokio::spawn(async move {
                                 let _order=upload_order.begin(None).await;
-                                let mut updates=request.progress.subscribe();
-                                let operation=api.upload_messages(request.command,request.source,request.progress,request.cancel.subscribe());
+								let crate::uploads::UploadRequest {command,source,voice,progress,cancel}=request;
+								let mut updates=progress.subscribe();
+								let cancelled=cancel.subscribe();
+								let operation=async move {
+									match voice {
+										Some(metadata)=>if let [source]=source.as_slice() {
+											api.upload_voice_message(command,source.clone(),metadata,progress,cancelled).await
+										} else {
+											Event::Failure(Failure::ProtocolAt("Invalid voice-message upload"))
+										},
+										None=>api.upload_messages(command,source,progress,cancelled).await,
+									}
+								};
                                 tokio::pin!(operation);
                                 let mut observing=true;
                                 let event=loop {

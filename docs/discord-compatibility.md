@@ -1,5 +1,19 @@
 # Discord compatibility — checked 2026-09-10
 
+## Desktop voice messages — November 10, 2026
+
+Discord's public [Message resource](https://discord.com/developers/docs/resources/message) documents
+the `IS_VOICE_MESSAGE` flag and attachment `duration_secs`/`waveform` fields, but says the audio
+encoding details are implementation-specific. Its [voice-message support article](https://support.discord.com/hc/en-us/articles/13091096725527-Voice-Messages)
+says voice messages can only be sent from mobile, not the official desktop or web client.
+
+Evita has an explicit local recorder capped at two minutes, encodes mono 48 kHz Opus in Ogg,
+requests the existing signed attachment upload, then submits one attachment with flag 8192 and
+duration/waveform metadata. This extension is **unofficial and unverified**: upload request and
+payload shape tests use loopback synthetic servers only; no microphone, account or Discord upload
+was used. Discord may reject the extension or change its internals. A definite failure preserves
+the voice metadata for user-reviewed retry; an ambiguous send is never replayed.
+
 ## Quest Home — November 8, 2026
 
 Quest Home reads `GET /quests/@me` through the authenticated account session, with a 256 KiB
@@ -1237,6 +1251,7 @@ Server identity tags (September 19): Discord's documented [User object](https://
 | Relationships | Normal session or restricted Social SDK scopes; OAuth scope table and Abaddon | Unofficial / restricted | Unsupported |
 | Reactions | Normal session; [message reaction resource](https://docs.discord.com/developers/resources/message#reaction-object) and [Gateway reaction events](https://docs.discord.com/developers/events/gateway-events#message-reaction-add), rechecked September 10 | Documented routes/shapes; normal-user acceptance live-unverified | Native counts, eight-emoji picker, existing Unicode/custom emoji toggles, normal own-reaction PUT/DELETE and bounded message readback. Synthetic HTTP/Gateway/keyboard tests pass; no live validation |
 | Upload / preview / save | Normal session + separate credential-free media transfer; [attachment reference](https://docs.discord.com/developers/resources/message#attachment-object) and [normal-user staged upload](https://github.com/dolfies/discord.py-self/blob/2ba64a9a997e151a9c259984e0a179b1fdf4aff4/discord/abc.py#L1551) | Documented attachment metadata; staged upload unofficial; service delivery/conversion live-unverified | Up to ten explicitly selected files totaling 500,000,000 bytes, streamed upload/cancel and message confirmation; Discord enforces the account's lower entitlement limit. Static previews, native viewer, image/video attachment context menus with native clipboard copy, and explicit image/file Save As (1 byte through 100 MiB). Upload limits below; preview/save limits |
+| Voice messages | [Message resource](https://discord.com/developers/docs/resources/message) flag and attachment fields; mobile-only [voice message help](https://support.discord.com/hc/en-us/articles/13091096725527-Voice-Messages) | Metadata documented; desktop upload/encoding flow unofficial and unverified | Explicit two-minute local recording, Ogg/Opus encode, signed upload then voice-flagged message request; synthetic loopback tests only, no mic or live send |
 | Conversation search | Normal session; [discord.py-self search flow](https://github.com/dolfies/discord.py-self/blob/master/discord/abc.py), [HTTP routes](https://github.com/dolfies/discord.py-self/blob/master/discord/http.py), [response types](https://github.com/dolfies/discord.py-self/blob/master/discord/types/message.py) checked September 10 | Unofficial and unstable | Search current conversation, numbered result pages, snapshot snippets, history revalidation on Open message; indexing/permission failures are visible. Live-unverified |
 | Pinned messages | Normal session; [Get Channel Pins](https://docs.discord.com/developers/resources/message#get-channel-pins) and [normal-user implementation](https://github.com/dolfies/discord.py-self/blob/master/discord/http.py) | Documented route; normal-user acceptance live-unverified | Manual 25-pin pages, Older/Retry, Reload newest and history-validated Open message; pin/unpin mutations unsupported |
 | Threads / forums | Normal session; navigation and archive scope, archive sources below | Wire evidence checked September 10; normal-user behavior live-unverified | READY/thread-event reconciliation, parent/post hierarchy and manual public/private/joined-private archive pages implemented; a chat link or a flagged starter admits one unloaded thread per bounded read; complete active directory and create/join controls remain incomplete |
@@ -1372,13 +1387,17 @@ USE_EXTERNAL_EMOJIS for another server's emoji; DMs have no guild permission gat
 reactions use the same eligibility rules, while existing reaction/removal semantics remain.
 Unknown native eligibility remains disabled. The built-in picker and autocomplete use the current
 session's confirmed Nitro entitlement for animated or external custom emoji, choosing
-the native path when available and the image fallback otherwise. Static custom emoji
-in their own server keep the native path without Nitro. Fallback selection requires
-send permission and does not change reaction eligibility; artwork-only sends also
-require attachment permission. Picking never sends fallback artwork immediately.
-Discord remains authoritative for actual sends and reactions, including entitlement rejection.
+the native path when available. Static custom emoji in their own server keep the native
+path without Nitro. When native use is unavailable, selection inserts the compact
+`:name:` shortcode instead of a Markdown CDN image link. Discord may show that shortcode
+as plain text; Evita does not claim it renders the custom artwork on mobile. This avoids
+turning an unavailable emoji into a large attachment preview. Picking never sends image
+artwork. Discord remains authoritative for actual sends and reactions, including
+entitlement rejection.
 Natively eligible animated emoji are inserted with their original animated markup
 and shown as still previews.
+The picker also keeps up to 100 local emoji favorites per account in the device database;
+this is only a local shortcut and does not change entitlement or send behavior.
 Hovering a rendered emoji or received sticker shows its artwork, `:shortcode:` or catalog/sticker
 name and a click hint; reaction summaries also name default emoji by shortcode.
 Clicking a rendered message, embed or profile emoji opens a native information card. Standard
@@ -1675,6 +1694,13 @@ The guild subscription sets `activities: true` so the Gateway delivers member ga
 and rich text alongside presence. Only received activity metadata is displayed; missing events remain
 unavailable. Offline status clears activity. Disconnect hides cached DM presence; a successful resume restores it and applies replayed changes. Fresh READY, resync and session reset discard the cache.
 Join/spectate actions and progress timers remain unsupported.
+
+DM, friend and member rows keep custom status text visible and show a separate controller badge
+for received activity. Hovering the badge reveals up to three bounded activity summaries.
+Previously, row subtitles preferred the first activity and fell back to custom status, so a game
+or Spotify session could replace the custom status in the same line. That was a local display
+precedence issue, not a Gateway overwrite; the model stored both values separately. Activity
+delivery and normal-account interoperability remain unofficial/live-unverified.
 
 DM recipients who are not friends (October 17, 2026): Discord subscribes a normal account
 to the presence of users it has an open DM with, but reports non-friends through guilds:

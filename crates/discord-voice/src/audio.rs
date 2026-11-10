@@ -51,6 +51,21 @@ pub fn devices() -> Result<DeviceList, &'static str> {
 	}
 	Ok(list)
 }
+
+/// Request OS microphone authorization after an explicit local recording action.
+pub fn authorize_microphone_for_recording() -> Result<(), &'static str> {
+	#[cfg(target_os = "macos")]
+	{
+		let gate = Gate::default();
+		gate.ready.store(true, Ordering::Release);
+		let revision = gate.revision.load(Ordering::Acquire);
+		permission_macos::authorize(&gate, revision)
+	}
+	#[cfg(not(target_os = "macos"))]
+	{
+		Ok(())
+	}
+}
 pub struct Gate {
 	pub ready: AtomicBool,
 	pub muted: AtomicBool,

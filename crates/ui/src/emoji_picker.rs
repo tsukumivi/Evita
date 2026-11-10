@@ -815,17 +815,10 @@ impl Picker {
 
 	fn pick(&self, state: &State, emoji: model::ReactionEmoji, text: String) -> Pick {
 		let custom = emoji.id.and_then(|id| state.custom_emoji(id));
-		if self.shares_emoji(state, &emoji, custom)
-			&& let Some(id) = emoji.id
-		{
-			return Pick::Insert(
-				model::ImageShare::Emoji {
-					id,
-					animated: text.starts_with("<a:"),
-				}
-				.markdown(emoji.name.as_deref().unwrap_or("emoji"))
-				.unwrap_or(text),
-			);
+		if self.shares_emoji(state, &emoji, custom) && emoji.id.is_some() {
+			// Do not turn an emoji the recipient cannot use into a CDN image link. Mobile
+			// Discord expands that link as a large attachment; a shortcode remains compact.
+			return Pick::Insert(format!(":{}:", emoji.name.as_deref().unwrap_or("emoji")));
 		}
 		match self.reaction {
 			Some((Target::React(message), _, _)) => Pick::React(message, emoji),
@@ -1022,6 +1015,7 @@ impl Picker {
 		let mut selected: Option<Pick> = None;
 		let mut used = None;
 		let mut gif_action: Option<GifAction> = None;
+		let mut emoji_favorite_action: Option<model::EmojiFavorite> = None;
 		let mut hovered: Option<(Option<egui::Image<'static>>, String, String)> = None;
 		let mut hovered_source: Option<&str> = None;
 		let mut hovered_gif: Option<String> = None;
@@ -1450,6 +1444,79 @@ impl Picker {
 									.layout(egui::Layout::top_down(egui::Align::Min)),
 								|ui| {
 									ui.spacing_mut().item_spacing = egui::vec2(0.0, 0.0);
+									if self.reaction.is_none()
+										&& self.query.is_empty() && !state
+										.emoji_favorites
+										.items
+										.is_empty()
+									{
+										ui.label(
+											crate::design::semibold(ui, "FAVORITES", 12.0)
+												.color(colors.muted),
+										);
+										ui.add_space(4.0);
+										ui.horizontal_wrapped(|ui| {
+											for favorite in &state.emoji_favorites.items {
+												let emoji = model::ReactionEmoji {
+													id: favorite.id,
+													name: Some(favorite.name.clone()),
+												};
+												let image = favorite.id.map_or_else(
+													|| {
+														crate::emoji::image(
+															ui.ctx(),
+															&favorite.name,
+															32.0,
+														)
+													},
+													|id| {
+														avatars.custom_emoji(
+															ui.ctx(),
+															id,
+															favorite.animated,
+															32.0,
+															demo,
+														)
+													},
+												);
+												let response = cell(
+													ui,
+													image.clone(),
+													&favorite.name,
+													self.can_pick(
+														state,
+														&emoji,
+														state.custom_emoji(
+															emoji.id.unwrap_or(Id(0)),
+														),
+													),
+													&colors,
+												);
+												let star = favorite_emoji_star(
+													ui,
+													&response,
+													state.is_emoji_favorite(favorite),
+												);
+												if star.clicked() {
+													emoji_favorite_action = Some(favorite.clone());
+												} else if response.clicked()
+													&& self.can_pick(
+														state,
+														&emoji,
+														state.custom_emoji(
+															emoji.id.unwrap_or(Id(0)),
+														),
+													) {
+													selected = Some(self.pick(
+														state,
+														emoji,
+														favorite.markup(),
+													));
+												}
+											}
+										});
+										ui.add_space(8.0);
+									}
 									if self.reaction.is_some() && self.query.is_empty() {
 										ui.label(
 											crate::design::semibold(
@@ -1654,6 +1721,31 @@ impl Picker {
 																	},
 																)
 																.inner;
+															let favorite =
+																if let Some((_, custom)) =
+																	custom_emoji
+																{
+																	model::EmojiFavorite {
+																		id: Some(custom.id),
+																		name: custom.name.clone(),
+																		animated: custom.animated,
+																	}
+																} else {
+																	model::EmojiFavorite {
+																		id: None,
+																		name: text.clone(),
+																		animated: false,
+																	}
+																};
+															let star = favorite_emoji_star(
+																ui,
+																&response,
+																state.is_emoji_favorite(&favorite),
+															);
+															if star.clicked() {
+																emoji_favorite_action =
+																	Some(favorite);
+															}
 															let response = if !enabled {
 																response.on_hover_text(
 																	unavailable.unwrap_or_else(
@@ -1674,7 +1766,9 @@ impl Picker {
 																hovered_source =
 																	source.map(|g| g.name.as_str());
 															}
-															if response.clicked() && enabled {
+															if response.clicked()
+																&& enabled && !star.clicked()
+															{
 																if source.is_none() {
 																	used = Some(
 																		standard()[unicode
@@ -1841,6 +1935,9 @@ impl Picker {
 			&& let Some(text) = used
 		{
 			self.record(text);
+		}
+		if let Some(favorite) = emoji_favorite_action {
+			state.toggle_emoji_favorite(favorite);
 		}
 		match gif_action {
 			Some(GifAction::Refresh) => {
@@ -2503,6 +2600,62 @@ fn paint_emoji(
 	}
 }
 
+/// Small hover star for an emoji tile. It is available to keyboard users even while hidden.
+fn favorite_emoji_star(
+	ui: &mut egui::Ui,
+	response: &egui::Response,
+	favorite: bool,
+) -> egui::Response {
+	let palette = crate::design::palette(ui);
+	let id = response.id.with("emoji-favorite");
+	let rect = egui::Rect::from_min_size(
+		response.rect.right_top() + egui::vec2(-18.0, 2.0),
+		egui::Vec2::splat(16.0),
+	);
+	let visible = ui.rect_contains_pointer(response.rect)
+		|| response.has_focus()
+		|| ui.memory(|memory| memory.has_focus(id));
+	let star = ui.interact(
+		rect,
+		id,
+		if visible {
+			egui::Sense::click()
+		} else {
+			egui::Sense::focusable_noninteractive()
+		},
+	);
+	if visible || star.has_focus() {
+		ui.painter().rect_filled(
+			rect,
+			4,
+			egui::Color32::from_black_alpha(if star.hovered() || star.has_focus() {
+				210
+			} else {
+				165
+			}),
+		);
+		crate::icons::paint(
+			ui.painter(),
+			if favorite {
+				crate::icons::Icon::StarFill
+			} else {
+				crate::icons::Icon::Star
+			},
+			rect.shrink(3.0),
+			if favorite || star.hovered() {
+				palette.warning
+			} else {
+				egui::Color32::WHITE
+			},
+		);
+	}
+	star.on_hover_text(if favorite {
+		"Remove emoji from favorites"
+	} else {
+		"Add emoji to favorites"
+	})
+}
+
 /// One grid cell: hover highlight plus the emoji image (or its name when no image exists).
 fn cell(
 	ui: &mut egui::Ui,
@@ -2832,7 +2985,7 @@ mod tests {
 	}
 
 	#[test]
-	fn image_sharing_is_builtin_and_never_changes_reactions() {
+	fn external_custom_emoji_stays_compact_and_never_changes_reactions() {
 		let mut state = test_support::demo_state();
 		let mut picker = Picker {
 			channel: state.selected,
@@ -2845,7 +2998,7 @@ mod tests {
 		assert!(picker.can_pick(&state, &emoji, None));
 		assert!(matches!(
 			picker.pick(&state, emoji.clone(), "<a:wave:999>".into()),
-			Pick::Insert(text) if text == "[wave](https://cdn.discordapp.com/emojis/999.gif?size=64)"
+			Pick::Insert(text) if text == ":wave:"
 		));
 		picker.reaction = Some((
 			Target::React(Id(500)),
@@ -2877,13 +3030,13 @@ mod tests {
 		};
 		assert!(matches!(
 			picker.pick(&state, local.clone(), "<a:serein_party:9002>".into()),
-			Pick::Insert(text) if text.contains("https://cdn.discordapp.com/emojis/9002.gif?size=64")
+			Pick::Insert(text) if text == ":serein_party:"
 		));
 		state.selected = Some(Id(22));
 		picker.channel = state.selected;
 		assert!(matches!(
 			picker.pick(&state, local.clone(), "<a:serein_party:9002>".into()),
-			Pick::Insert(text) if text.contains("https://cdn.discordapp.com/emojis/9002.gif?size=64")
+			Pick::Insert(text) if text == ":serein_party:"
 		));
 		state.premium_type = 2;
 		assert!(matches!(

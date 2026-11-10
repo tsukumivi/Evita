@@ -1359,8 +1359,24 @@ fn activity_summary(activity: &model::RichActivity) -> String {
 }
 
 pub(crate) fn subtitle(custom: Option<&str>, activities: &[model::RichActivity]) -> Option<String> {
-	activities
-		.first()
+	custom.map(str::to_owned).or_else(|| {
+		activities.first().map(|activity| {
+			if is_spotify(activity) {
+				activity
+					.state
+					.clone()
+					.unwrap_or_else(|| activity_summary(activity))
+			} else {
+				activity_summary(activity)
+			}
+		})
+	})
+}
+
+pub(crate) fn activity_tooltip(activities: &[model::RichActivity]) -> Option<String> {
+	let text = activities
+		.iter()
+		.take(3)
 		.map(|activity| {
 			if is_spotify(activity) {
 				activity
@@ -1371,7 +1387,25 @@ pub(crate) fn subtitle(custom: Option<&str>, activities: &[model::RichActivity])
 				activity_summary(activity)
 			}
 		})
-		.or_else(|| custom.map(str::to_owned))
+		.collect::<Vec<_>>()
+		.join("\n");
+	(!text.is_empty()).then(|| text.chars().take(256).collect())
+}
+
+pub(crate) fn activity_badge(
+	ui: &mut egui::Ui,
+	id: egui::Id,
+	activities: &[model::RichActivity],
+	size: f32,
+	color: Color32,
+) -> bool {
+	let Some(tip) = activity_tooltip(activities) else {
+		return false;
+	};
+	let rect = crate::icons::inline(ui, Icon::GameController, size, color);
+	ui.interact(rect, id, egui::Sense::hover())
+		.on_hover_text(tip);
+	true
 }
 
 fn rgb(value: u32) -> Color32 {
@@ -5583,6 +5617,28 @@ mod tests {
 		assert_eq!(
 			presence(&state, user.id, Some(Id(10))),
 			(None, None, [].as_slice(), model::ClientPlatforms::default())
+		);
+	}
+
+	#[test]
+	fn activity_does_not_replace_custom_status_and_remains_available_for_tooltips() {
+		let activities = [model::RichActivity {
+			kind: 0,
+			name: "Example game".into(),
+			details: None,
+			state: None,
+			image: None,
+			small_image: None,
+			started_at: None,
+			ends_at: None,
+		}];
+		assert_eq!(
+			subtitle(Some("Custom status"), &activities),
+			Some("Custom status".into())
+		);
+		assert_eq!(
+			activity_tooltip(&activities).as_deref(),
+			Some("Playing Example game")
 		);
 	}
 
