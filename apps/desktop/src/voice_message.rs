@@ -240,7 +240,7 @@ fn input_config(device: &cpal::Device) -> Result<cpal::SupportedStreamConfig, &'
 		.iter()
 		.filter(|config| (1..=8).contains(&config.channels()))
 		.filter(|config| supported_format(config.sample_format()))
-		.filter_map(|config| config.clone().try_with_sample_rate(RATE))
+		.filter_map(|config| (*config).try_with_sample_rate(RATE))
 		.min_by_key(|config| config.channels())
 	{
 		return Ok(config);

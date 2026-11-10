@@ -4939,15 +4939,15 @@ impl Desktop {
 				}
 			}
 		}
-		if std::mem::take(&mut self.messaging.voice_message_stop_requested) {
-			if let Some(capture) = &self.voice_message_capture {
-				capture.stop();
-				self.messaging.voice_message_starting = false;
-				self.messaging.voice_message_recording = false;
-				self.messaging.voice_message_encoding = true;
-				self.messaging.voice_message_status = "Preparing voice message…";
-				ctx.request_repaint_after(Duration::from_millis(100));
-			}
+		if std::mem::take(&mut self.messaging.voice_message_stop_requested)
+			&& let Some(capture) = &self.voice_message_capture
+		{
+			capture.stop();
+			self.messaging.voice_message_starting = false;
+			self.messaging.voice_message_recording = false;
+			self.messaging.voice_message_encoding = true;
+			self.messaging.voice_message_status = "Preparing voice message…";
+			ctx.request_repaint_after(Duration::from_millis(100));
 		}
 		if std::mem::take(&mut self.messaging.voice_message_send_requested) {
 			if self.messaging.voice_message_restored {
