@@ -1900,7 +1900,7 @@ impl MessagingUi {
 												ui.spacing_mut().item_spacing.x = 4.0;
 												let has_activity = profiles::activity_badge(
 													ui,
-													ui.id()
+													ui.scope_id()
 														.with(("member-activity", member.user.id)),
 													activities,
 													12.0,
@@ -3676,20 +3676,16 @@ impl MessagingUi {
                         column(ui, &mut |ui| {
                         let send_button = ui
                             .add_enabled_ui(can_send, |ui| {
-                                icons::button(
-                                    ui,
-                                    icons::Icon::Send,
-                                    28.0,
-	                                    if self.voice_message_ready_secs.is_some() {
-									"Send voice message"
-									} else if editing_here {
-									&crate::i18n::translate("lib-ime-updates-text-save-edit")
-								} else if application_command {
-									&crate::i18n::translate("lib-ime-updates-text-send-command")
-								} else {
-									&crate::i18n::translate("lib-ime-updates-text-send-message")
-								},
-                                )
+                                let send_label = if self.voice_message_ready_secs.is_some() {
+                                    "Send voice message".to_owned()
+                                } else if editing_here {
+                                    crate::i18n::translate("lib-ime-updates-text-save-edit")
+                                } else if application_command {
+                                    crate::i18n::translate("lib-ime-updates-text-send-command")
+                                } else {
+                                    crate::i18n::translate("lib-ime-updates-text-send-message")
+                                };
+                                icons::button(ui, icons::Icon::Send, 28.0, &send_label)
                             })
                             .inner;
                         let send = enter || send_button.clicked();

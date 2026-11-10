@@ -725,7 +725,7 @@ impl MessagingUi {
 									);
 									profiles::activity_badge(
 										ui,
-										ui.id().with(("friend-activity", user.id)),
+										ui.scope_id().with(("friend-activity", user.id)),
 										activities,
 										14.0,
 										colors.positive,

@@ -1264,7 +1264,7 @@ impl MessagingUi {
 											if activity_tip.is_some() {
 												crate::profiles::activity_badge(
 													ui,
-													ui.id().with(("dm-activity", channel.id)),
+													ui.scope_id().with(("dm-activity", channel.id)),
 													activities,
 													13.0,
 													colors.muted,
