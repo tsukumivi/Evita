@@ -1748,7 +1748,9 @@ mod tests {
 					events,
 					..Default::default()
 				},
-				|ui| view.channel_list(ui, state),
+				|ui| {
+					view.channel_list(ui, state);
+				},
 			)
 		};
 		let output = frame(&mut view, &mut state, vec![]);
