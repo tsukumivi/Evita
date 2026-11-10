@@ -3646,8 +3646,8 @@ impl MessagingUi {
 							self.voice_message_start_requested = true;
 						}
 					} else if voice_message_busy {
-						if self.voice_message_recording {
-							if icons::button(
+						if self.voice_message_recording
+							&& icons::button(
 								ui,
 								icons::Icon::Microphone,
 								28.0,
@@ -3656,7 +3656,6 @@ impl MessagingUi {
 							.clicked()
 						{
 							self.voice_message_stop_requested = true;
-						}
 						}
 						if icons::button(
 							ui,

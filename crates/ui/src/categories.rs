@@ -1175,14 +1175,14 @@ impl MessagingUi {
 									channel
 										.recipients
 										.first()
-										.and_then(|user| {
+										.map(|user| {
 											let (_, custom, activities, _) =
 												crate::profiles::presence(state, user.id, None);
-											Some((
+											(
 												custom.map(str::to_owned),
 												crate::profiles::activity_tooltip(activities),
 												activities,
-											))
+											)
 										})
 										.unwrap_or((None, None, &[][..]))
 								} else {

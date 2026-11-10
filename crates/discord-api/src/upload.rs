@@ -219,10 +219,10 @@ fn base64_value(byte: u8) -> Option<u8> {
 /// Validate canonical padded standard Base64 and return its decoded byte count without allocation.
 fn waveform_bytes(value: &str) -> Option<usize> {
 	let bytes = value.as_bytes();
-	if bytes.is_empty() || bytes.len() % 4 != 0 {
+	if bytes.is_empty() || !bytes.len().is_multiple_of(4) {
 		return None;
 	}
-	for (index, chunk) in bytes.chunks_exact(4).enumerate() {
+	for (index, chunk) in bytes.as_chunks::<4>().0.iter().enumerate() {
 		let final_chunk = index + 1 == bytes.len() / 4;
 		base64_value(chunk[0])?;
 		let second = base64_value(chunk[1])?;
