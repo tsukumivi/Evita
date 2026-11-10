@@ -1736,6 +1736,7 @@ mod tests {
 		state.invalidate_navigation();
 		let mut view = MessagingUi::default();
 		let ctx = egui::Context::default();
+		ctx.enable_accesskit();
 		const WIDTH: f32 = 360.0;
 		const HEIGHT: f32 = 300.0;
 		let frame = |view: &mut MessagingUi, state: &mut State, events| {
