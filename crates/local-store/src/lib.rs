@@ -3168,7 +3168,7 @@ mod tests {
 
 	#[test]
 	fn emoji_favorites_round_trip_and_remain_account_isolated() {
-		let (_dir, mut store) = store();
+		let mut store = LocalStore::initialize(Connection::open_in_memory().unwrap()).unwrap();
 		let favorites = vec![
 			model::EmojiFavorite {
 				id: None,
