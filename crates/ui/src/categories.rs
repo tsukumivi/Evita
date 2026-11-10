@@ -1170,31 +1170,34 @@ impl MessagingUi {
 							if !enabled && visible {
 								label.push_str(" · unavailable");
 							}
-							let (subtitle, activity_tip) = if dm_list && channel.kind == 1 {
-								channel
-									.recipients
-									.first()
-									.and_then(|user| {
-										let (_, custom, activities, _) =
-											crate::profiles::presence(state, user.id, None);
-										Some((
-											custom.map(str::to_owned),
-											crate::profiles::activity_tooltip(activities),
-										))
-									})
-									.unwrap_or((None, None))
-							} else {
-								(
-									(dm_list && channel.kind == 3).then(|| {
-										format!(
-											"{} {}",
-											channel.recipients.len() + 1,
-											language.text("members-count")
-										)
-									}),
-									None,
-								)
-							};
+							let (subtitle, activity_tip, activities) =
+								if dm_list && channel.kind == 1 {
+									channel
+										.recipients
+										.first()
+										.and_then(|user| {
+											let (_, custom, activities, _) =
+												crate::profiles::presence(state, user.id, None);
+											Some((
+												custom.map(str::to_owned),
+												crate::profiles::activity_tooltip(activities),
+												activities,
+											))
+										})
+										.unwrap_or((None, None, &[][..]))
+								} else {
+									(
+										(dm_list && channel.kind == 3).then(|| {
+											format!(
+												"{} {}",
+												channel.recipients.len() + 1,
+												language.text("members-count")
+											)
+										}),
+										None,
+										&[][..],
+									)
+								};
 							let direct_user = (dm_list && channel.kind == 1)
 								.then(|| channel.recipients.first())
 								.flatten();

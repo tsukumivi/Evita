@@ -3624,7 +3624,7 @@ impl MessagingUi {
 						&& !editing_here
 						&& !application_command
 						&& !state.demo
-						&& state.auth == AuthState::Authenticated
+						&& state.auth == client_core::auth::AuthState::Authenticated
 						&& state.gateway_connected
 						&& state.can_send(channel)
 						&& state.can_attach(channel)
