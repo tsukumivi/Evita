@@ -116,6 +116,7 @@ mod server_notification_tests;
 mod server_notifications;
 mod server_roles;
 mod server_settings;
+mod server_soundboard;
 mod server_stickers;
 mod settings;
 mod shortcuts;
@@ -300,6 +301,9 @@ pub struct MessagingUi {
 	server_icon_sequence: u64,
 	server_emoji_sequence: u64,
 	server_sticker_sequence: u64,
+	server_soundboard_sequence: u64,
+	activity_picker_open: bool,
+	activity_search_query: String,
 	server_role_icon_sequence: u64,
 	switcher: switcher::Switcher,
 	focus_switched_composer: bool,
@@ -3431,8 +3435,7 @@ impl MessagingUi {
 		} else {
 			Vec::new()
 		};
-		let mass_mentions =
-			state.permission(channel, model::permissions::MENTION_EVERYONE) == Some(true);
+		let mass_mentions = mentions::can_mention_mass(state, channel);
 		let cursor = egui::text_edit::TextEditState::load(ctx, composer_id)
 			.and_then(|s| s.cursor.char_range())
 			.filter(|r| r.is_empty())
@@ -3836,6 +3839,10 @@ impl MessagingUi {
                                     egui::text::CCursor::new(cursor),
                                 )));
                             edit_state.store(ctx, composer_id);
+                            // The autocomplete is an overlay; keep keyboard focus in the editor
+                            // as soon as a person is inserted so the next keystroke continues
+                            // the same draft without another click.
+                            ctx.memory_mut(|memory| memory.request_focus(composer_id));
                             mention_changed = true;
                         }
 						if mention_enabled
@@ -5958,6 +5965,91 @@ impl MessagingUi {
 			}
 		}
 		self.onboarding.show(&ctx, state, &mut commands);
+		if self.activity_picker_open {
+			eg_ui::Window::new(crate::i18n::translate_if_key("activity-search-title"))
+				.id(egui::Id::new("activity-catalog-picker"))
+				.open(&mut self.activity_picker_open)
+				.default_width(560.0)
+				.default_height(520.0)
+				.resizable(true)
+				.show(&ctx, |ui| {
+					ui.label(crate::i18n::translate_if_key("activity-search-description"));
+					let response = ui.horizontal(|ui| {
+						let edit = ui.add_sized(
+							[ui.available_width() - 90.0, 32.0],
+							eg_ui::TextEdit::singleline(&mut self.activity_search_query).hint_text(
+								crate::i18n::translate_if_key("activity-search-placeholder"),
+							),
+						);
+						let search_clicked = ui
+							.button(crate::i18n::translate_if_key("activity-search-button"))
+							.clicked();
+						(edit, search_clicked)
+					});
+					if (response.inner.0.lost_focus()
+						&& ui.input(|input| input.key_pressed(egui::Key::Enter)))
+						|| response.inner.1
+					{
+						if let Some(command) =
+							state.activity_search.request(&self.activity_search_query)
+						{
+							commands.push(command);
+						}
+					}
+					ui.add_space(8.0);
+					if state.activity_search.loading {
+						ui.spinner();
+					} else if state.activity_search.error.is_some() {
+						ui.label(crate::i18n::translate_if_key(
+							"activity-search-loading-error",
+						));
+					} else if state.activity_search.loaded && state.activity_search.items.is_empty()
+					{
+						ui.weak(crate::i18n::translate_if_key("activity-search-no-results"));
+					} else {
+						for activity in &state.activity_search.items {
+							eg_ui::Frame::group(ui.style()).show(ui, |ui| {
+								ui.horizontal(|ui| {
+									let icon = activity.icon.as_ref().map(|hash| {
+										format!("application-icon-{}-{hash}", activity.id)
+									});
+									self.avatars.show_icon(
+										ui,
+										icon,
+										44.0,
+										state.demo,
+										&activity.name,
+									);
+									ui.vertical(|ui| {
+										ui.label(egui::RichText::new(&activity.name).strong());
+										if activity.verified {
+											ui.weak(crate::i18n::translate_if_key(
+												"activity-search-verified",
+											));
+										}
+									});
+								});
+								if !activity.description.is_empty() {
+									ui.label(&activity.description);
+								}
+								if !activity.categories.is_empty() {
+									ui.weak(
+										activity
+											.categories
+											.iter()
+											.map(|category| category.name.as_str())
+											.collect::<Vec<_>>()
+											.join(" · "),
+									);
+								}
+							});
+							ui.add_space(4.0);
+						}
+					}
+					ui.separator();
+					ui.weak(crate::i18n::translate_if_key("activity-search-read-only"));
+				});
+		}
 		self.scroll.clear_if_unbound(&ctx);
 		self.scroll.paint(&ctx);
 		// Clear the title bar and channel header so a notice never sits on the chrome.
@@ -6687,6 +6779,7 @@ mod composer_tests {
 				guild: None,
 				parent_id: None,
 				kind: 1,
+				nsfw: None,
 				name: "Synthetic edit conversation".into(),
 				position: 0,
 				recipients: vec![],
@@ -8637,6 +8730,7 @@ mod composer_tests {
 				id: Id(11),
 				guild: None,
 				kind: 1,
+				nsfw: None,
 				name: "Other conversation".into(),
 				last_message: None,
 				parent_id: None,
@@ -8714,6 +8808,7 @@ mod composer_tests {
 				position: 0,
 				name: "Synthetic".into(),
 				kind: 0,
+				nsfw: None,
 				recipients: Vec::new(),
 				member_list_id: Some("everyone".into()),
 				tags: None,
@@ -8907,6 +9002,7 @@ mod composer_tests {
 				position: 0,
 				name: "Synthetic".into(),
 				kind: 1,
+				nsfw: None,
 				recipients: Vec::new(),
 				member_list_id: None,
 				tags: None,
@@ -9308,6 +9404,7 @@ mod composer_tests {
 					position: 0,
 					name: "Open conversation".into(),
 					kind: if guild.is_some() { 0 } else { 1 },
+					nsfw: None,
 					recipients: vec![user.clone()],
 					member_list_id: None,
 					tags: None,
@@ -9671,6 +9768,7 @@ mod composer_tests {
 				position: 0,
 				name: "Synthetic".into(),
 				kind: 1,
+				nsfw: None,
 				recipients: Vec::new(),
 				member_list_id: None,
 				tags: None,

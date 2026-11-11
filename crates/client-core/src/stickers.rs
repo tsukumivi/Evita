@@ -242,6 +242,7 @@ mod tests {
 				guild: None,
 				parent_id: None,
 				kind: 1,
+				nsfw: None,
 				name: "DM".into(),
 				position: 0,
 				recipients: vec![],

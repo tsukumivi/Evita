@@ -3533,6 +3533,7 @@ mod tests {
 				position: 0,
 				name: "Synthetic channel".into(),
 				kind: 1,
+				nsfw: None,
 				recipients: vec![],
 				member_list_id: None,
 				tags: None,

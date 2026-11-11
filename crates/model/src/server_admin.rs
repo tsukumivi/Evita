@@ -6,6 +6,9 @@ pub const MAX_BYTES: usize = 1024 * 1024;
 pub const MAX_IMAGE_BYTES: usize = 256 * 1024;
 pub const MAX_IMAGE_URI: usize = 24 + 4 * MAX_IMAGE_BYTES.div_ceil(3);
 pub const MAX_STICKER_FILE_BYTES: usize = 512 * 1024;
+pub const MAX_SOUNDBOARD_SOUNDS: usize = 1000;
+pub const MAX_SOUNDBOARD_FILE_BYTES: usize = 512 * 1024;
+pub const MAX_SOUNDBOARD_DURATION_MS: u16 = 5200;
 pub const MEMBER_CHANNEL_FEATURE: &str = "ENABLED_MODERATION_EXPERIENCE_FOR_NON_COMMUNITY";
 #[derive(Clone)]
 pub struct Emoji {
@@ -27,6 +30,65 @@ pub struct Sticker {
 pub struct Stickers {
 	pub items: Vec<Sticker>,
 	pub limit: Option<usize>,
+}
+#[derive(Clone, Debug)]
+pub struct SoundboardSound {
+	pub id: Id,
+	pub guild_id: Option<Id>,
+	pub name: String,
+	/// Discord's normalized volume in the 0–100 range.
+	pub volume: u8,
+	pub emoji_id: Option<Id>,
+	pub emoji_name: Option<String>,
+	pub available: bool,
+	pub user: Option<User>,
+}
+impl SoundboardSound {
+	pub fn bytes(&self) -> usize {
+		size_of::<Self>()
+			+ self.name.capacity()
+			+ self.emoji_name.as_ref().map_or(0, String::capacity)
+			+ self.user.as_ref().map_or(0, User::heap_bytes)
+	}
+	pub fn valid(&self) -> bool {
+		self.id.0 != 0
+			&& (2..=32).contains(&self.name.chars().count())
+			&& !self.name.chars().any(char::is_control)
+			&& self.guild_id.is_none_or(|guild| guild.0 != 0)
+			&& self.emoji_id.is_none_or(|emoji| emoji.0 != 0)
+			&& self
+				.emoji_name
+				.as_ref()
+				.is_none_or(|name| name.len() <= 64 && !name.chars().any(char::is_control))
+			&& self
+				.user
+				.as_ref()
+				.is_none_or(|user| user.id.0 != 0 && user.heap_bytes() <= 1024)
+			&& self.volume <= 100
+			&& self.bytes() <= 4096
+	}
+}
+#[derive(Clone, Debug, Default)]
+pub struct Soundboard {
+	pub guild: Id,
+	pub items: Vec<SoundboardSound>,
+}
+impl Soundboard {
+	pub fn bytes(&self) -> usize {
+		size_of::<Self>()
+			+ self.items.capacity() * size_of::<SoundboardSound>()
+			+ self.items.iter().map(SoundboardSound::bytes).sum::<usize>()
+	}
+	pub fn valid(&self) -> bool {
+		self.guild.0 != 0
+			&& self.items.len() <= MAX_SOUNDBOARD_SOUNDS
+			&& self.bytes() <= MAX_BYTES
+			&& self.items.iter().enumerate().all(|(index, sound)| {
+				sound.valid()
+					&& sound.guild_id.is_none_or(|guild| guild == self.guild)
+					&& !self.items[..index].iter().any(|other| other.id == sound.id)
+			})
+	}
 }
 #[derive(Clone)]
 pub struct Member {
@@ -116,6 +178,20 @@ pub enum Action {
 		id: Id,
 	},
 	LoadStickers,
+	LoadSoundboard {
+		channel: Option<Id>,
+	},
+	CreateSoundboard {
+		name: String,
+		content_type: String,
+		file: Vec<u8>,
+		duration_ms: u16,
+	},
+	PlaySoundboard {
+		channel: Id,
+		sound: Id,
+		source_guild: Id,
+	},
 	CreateSticker {
 		name: String,
 		description: String,
@@ -170,6 +246,8 @@ impl Action {
 			Self::AuditLog(_)
 				| Self::LoadEmojis
 				| Self::LoadStickers
+				| Self::LoadSoundboard { .. }
+				| Self::PlaySoundboard { .. }
 				| Self::LoadMembers(_)
 				| Self::Prune { execute: false, .. }
 		)
@@ -181,6 +259,14 @@ impl Action {
 				| Self::CreateSticker { .. }
 				| Self::EditSticker { .. }
 				| Self::DeleteSticker { .. }
+		)
+	}
+	pub fn soundboard(&self) -> bool {
+		matches!(
+			self,
+			Self::LoadSoundboard { .. }
+				| Self::CreateSoundboard { .. }
+				| Self::PlaySoundboard { .. }
 		)
 	}
 	pub fn emoji(&self) -> bool {
@@ -257,6 +343,30 @@ impl Action {
 					&& valid_sticker_fields(name, description, tags)
 			}
 			Self::DeleteSticker { id } => id.0 != 0,
+			Self::CreateSoundboard {
+				name,
+				content_type,
+				file,
+				duration_ms,
+			} => {
+				(2..=32).contains(&name.chars().count())
+					&& !name.chars().any(char::is_control)
+					&& (content_type == "audio/mpeg" || content_type == "audio/ogg")
+					&& !file.is_empty()
+					&& file.len() <= MAX_SOUNDBOARD_FILE_BYTES
+					&& file.capacity() <= MAX_SOUNDBOARD_FILE_BYTES
+					&& (1..=MAX_SOUNDBOARD_DURATION_MS).contains(duration_ms)
+					&& if content_type == "audio/ogg" {
+						file.starts_with(b"OggS")
+					} else {
+						file.starts_with(b"ID3") || file.first().is_some_and(|first| *first == 0xff)
+					}
+			}
+			Self::PlaySoundboard {
+				channel,
+				sound,
+				source_guild,
+			} => channel.0 != 0 && sound.0 != 0 && source_guild.0 != 0,
 			Self::LoadMembers(query) => query.valid(),
 			Self::SetRole { user, role, .. } => user.0 != 0 && role.0 != 0,
 			Self::SetNickname { user, nick } => {
@@ -280,6 +390,8 @@ pub enum Result {
 	Roles(crate::server_roles::Result),
 	Emojis(Emojis),
 	Stickers(Stickers),
+	Soundboard(Soundboard),
+	SoundboardPlayed,
 	Members(Members),
 	Member(Member),
 	Kicked(Id),
@@ -355,6 +467,7 @@ impl Result {
 							})
 							.sum::<usize>()
 				}
+				Self::Soundboard(catalog) => catalog.bytes(),
 				Self::Members(page) => page.bytes(),
 				Self::Member(member) => member.bytes(),
 				_ => 0,
@@ -407,6 +520,7 @@ impl Result {
 									.is_none_or(|user| user.id.0 != 0 && user.heap_bytes() <= 1024)
 						})
 				}
+				Self::Soundboard(catalog) => catalog.valid(),
 				Self::Members(page) => page.valid(),
 				Self::Member(member) => member.valid(),
 				Self::Kicked(id) | Self::VoiceUpdated(id) => id.0 != 0,
@@ -439,5 +553,31 @@ impl Members {
 				.all(|role| role.role.id.0 != 0 && role.role.name.len() <= 400)
 			&& self.features.len() <= 256
 			&& self.features.iter().all(|value| value.len() <= 128)
+	}
+}
+
+#[cfg(test)]
+mod soundboard_action_tests {
+	use super::*;
+
+	fn action(duration_ms: u16) -> Action {
+		Action::CreateSoundboard {
+			name: "Wave".into(),
+			content_type: "audio/ogg".into(),
+			file: b"OggSdata".to_vec(),
+			duration_ms,
+		}
+	}
+
+	#[test]
+	fn soundboard_upload_requires_bounded_supported_audio_and_duration() {
+		assert!(action(5200).valid());
+		assert!(!action(5201).valid());
+		assert!(!action(0).valid());
+		let mut invalid = action(1000);
+		if let Action::CreateSoundboard { content_type, .. } = &mut invalid {
+			*content_type = "audio/wav".into();
+		}
+		assert!(!invalid.valid());
 	}
 }

@@ -270,6 +270,7 @@ mod tests {
 					position: 0,
 					name: "Synthetic DM".into(),
 					kind: 1,
+					nsfw: None,
 					recipients: vec![],
 					icon: None,
 					member_list_id: None,

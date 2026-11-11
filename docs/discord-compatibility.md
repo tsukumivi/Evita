@@ -1,5 +1,34 @@
 # Discord compatibility — checked 2026-09-10
 
+## Guild soundboard — November 11, 2026
+
+Discord's public [Soundboard resource](https://docs.discord.com/developers/resources/soundboard)
+documents guild sound listing, the `items` envelope and sound fields, sound creation with a
+base64 data URI, and playback requirements. The published endpoint documentation is written for
+bots. Evita uses these routes through its normal-account transport; that use is **unofficial and
+unverified** against a live account. Local validation enforces Discord's documented 512 KB and
+5.2 second upload caps, MP3/Ogg audio, guild permissions, and an active permitted voice session
+for playback. Synthetic request, decoder and state tests do not establish acceptance by Discord
+or delivery to other call participants.
+
+## Activities launcher — November 11, 2026
+
+The owner supplied a sanitized sample for `GET /applications/search` and a partial
+`POST /interactions` launch request. Evita implements only the sampled page-one catalog search as
+a read-only feature. These normal-account routes are undocumented and unverified against a live
+account. The example search response was malformed around `embedded_surfaces`, did not include a
+launch command in a valid application object, and its authorize response ended at
+`http://127.0.0`; it did not show the subsequent local session handshake. Evita therefore does
+not send an Activity launch request or open the returned location until a complete sanitized
+trace establishes those fields.
+
+## Age-restricted channel flag — November 11, 2026
+
+Channel `nsfw` decoding follows the sanitized sample supplied by the owner and is shown as a
+label. It does not change Discord permission handling, suppression flags, or access controls;
+whether an account can open a channel still depends on the permissions and channel data Discord
+sends.
+
 ## Desktop voice messages — November 10, 2026
 
 Discord's public [Message resource](https://discord.com/developers/docs/resources/message) documents

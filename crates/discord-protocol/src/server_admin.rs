@@ -155,6 +155,70 @@ pub fn stickers(bytes: &[u8], guild: Id) -> Result<m::Stickers, DecodeError> {
 pub fn sticker(bytes: &[u8], guild: Id) -> Result<m::Sticker, DecodeError> {
 	crate::decode::<StickerWire>(bytes)?.checked(guild)
 }
+
+#[derive(Deserialize)]
+struct SoundboardWire {
+	sound_id: Id,
+	name: String,
+	volume: f64,
+	#[serde(default)]
+	emoji_id: Option<Id>,
+	#[serde(default)]
+	emoji_name: Option<String>,
+	#[serde(default)]
+	guild_id: Option<Id>,
+	#[serde(default = "available")]
+	available: bool,
+	#[serde(default)]
+	user: Option<UserDto>,
+}
+fn available() -> bool {
+	true
+}
+fn soundboard_sound(value: SoundboardWire, guild: Id) -> Result<m::SoundboardSound, DecodeError> {
+	if value.volume.is_finite() && (0.0..=1.0).contains(&value.volume) {
+		let row = m::SoundboardSound {
+			id: value.sound_id,
+			guild_id: value.guild_id,
+			name: value.name,
+			volume: (value.volume * 100.0).round() as u8,
+			emoji_id: value.emoji_id,
+			emoji_name: value.emoji_name,
+			available: value.available,
+			user: value.user.map(UserDto::into_model),
+		};
+		if row.guild_id.is_some_and(|source| source != guild) || !row.valid() {
+			return Err(DecodeError);
+		}
+		Ok(row)
+	} else {
+		Err(DecodeError)
+	}
+}
+#[derive(Deserialize)]
+struct SoundboardList {
+	items: List<SoundboardWire, { m::MAX_SOUNDBOARD_SOUNDS }>,
+}
+pub fn soundboard(bytes: &[u8], guild: Id) -> Result<m::Soundboard, DecodeError> {
+	let rows: SoundboardList = crate::decode(bytes)?;
+	let items = rows
+		.items
+		.0
+		.into_iter()
+		.map(|row| soundboard_sound(row, guild))
+		.collect::<Result<Vec<_>, _>>()?;
+	let catalog = m::Soundboard { guild, items };
+	if !catalog.valid() {
+		return Err(DecodeError);
+	}
+	Ok(catalog)
+}
+pub fn soundboard_created(bytes: &[u8], guild: Id) -> Result<m::SoundboardSound, DecodeError> {
+	let row = soundboard_sound(crate::decode(bytes)?, guild)?;
+	(row.guild_id == Some(guild))
+		.then_some(row)
+		.ok_or(DecodeError)
+}
 #[derive(Deserialize)]
 struct MemberWire {
 	user: UserDto,
@@ -448,5 +512,27 @@ mod sticker_tests {
 			"application/json",
 			br#"{"w":320,"h":320,"fr":60,"ip":0,"op":301}"#
 		));
+	}
+}
+
+#[cfg(test)]
+mod soundboard_tests {
+	use super::*;
+
+	#[test]
+	fn soundboard_catalog_binds_guild_and_rejects_duplicate_ids() {
+		let row = r#"{"sound_id":"4","name":"Wave","volume":0.5,"emoji_id":null,"emoji_name":"👋","guild_id":"2","available":true,"user":{"id":"7","username":"Uploader"}}"#;
+		let page = format!("{{\"items\":[{row}]}}");
+		let catalog = soundboard(page.as_bytes(), Id(2)).unwrap();
+		assert_eq!(catalog.items.len(), 1);
+		assert_eq!(catalog.items[0].volume, 50);
+		assert_eq!(catalog.items[0].user.as_ref().unwrap().id, Id(7));
+
+		let foreign = row.replace("\"guild_id\":\"2\"", "\"guild_id\":\"3\"");
+		assert!(soundboard(format!("{{\"items\":[{foreign}]}}").as_bytes(), Id(2)).is_err());
+		assert!(soundboard(format!("{{\"items\":[{row},{row}]}}").as_bytes(), Id(2)).is_err());
+		let default = r#"{"sound_id":"5","name":"Quack","volume":1.0,"emoji_id":null,"emoji_name":"🦆","available":true}"#;
+		let catalog = soundboard(format!("{{\"items\":[{default}]}}").as_bytes(), Id(2)).unwrap();
+		assert_eq!(catalog.items[0].guild_id, None);
 	}
 }

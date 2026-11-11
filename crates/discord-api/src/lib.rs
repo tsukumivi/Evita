@@ -905,6 +905,16 @@ impl DiscordApi {
 					.await
 					.and_then(|bytes| quests::parse(&bytes)),
 			},
+			Command::ActivitySearch { request, query } => {
+				let path = activity_search_path(&query);
+				Event::ActivitySearch {
+					request,
+					result: self
+						.request_limited(Method::GET, &path, None, 256 * 1024)
+						.await
+						.and_then(|bytes| application_search::parse(&bytes)),
+				}
+			}
 			Command::ApplicationCommands {
 				channel,
 				guild,
@@ -2144,6 +2154,26 @@ fn reaction_path(
 		"/channels/{channel}/messages/{message}/reactions/{encoded}/@me"
 	))
 }
+fn activity_search_path(query: &str) -> String {
+	let mut params = url::form_urlencoded::Serializer::new(String::new());
+	for (key, value) in [
+		("query", query),
+		("page", "1"),
+		("locale", "en-US"),
+		("integration_type", "1"),
+		("min_user_install_command_count", "1"),
+		("exclude_apps_with_custom_install_url", "true"),
+		("exclude_non_embedded_apps", "true"),
+		(
+			"exclude_embedded_apps_without_primary_entry_point_app_command",
+			"true",
+		),
+		("source", "1"),
+	] {
+		params.append_pair(key, value);
+	}
+	format!("/applications/search?{}", params.finish())
+}
 fn reaction_users_path(
 	channel: model::Id,
 	message: model::Id,
@@ -2169,6 +2199,35 @@ fn safe_delay(seconds: Option<f64>) -> Result<Duration, Failure> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	#[test]
+	fn activity_catalog_search_uses_the_sampled_read_only_parameters() {
+		let path = activity_search_path("wordle & chess");
+		let (route, query) = path.split_once('?').unwrap();
+		assert_eq!(route, "/applications/search");
+		let params: std::collections::BTreeMap<_, _> =
+			url::form_urlencoded::parse(query.as_bytes())
+				.into_owned()
+				.collect();
+		assert_eq!(
+			params.get("query").map(String::as_str),
+			Some("wordle & chess")
+		);
+		for (key, expected) in [
+			("page", "1"),
+			("locale", "en-US"),
+			("integration_type", "1"),
+			("min_user_install_command_count", "1"),
+			("exclude_apps_with_custom_install_url", "true"),
+			("exclude_non_embedded_apps", "true"),
+			(
+				"exclude_embedded_apps_without_primary_entry_point_app_command",
+				"true",
+			),
+			("source", "1"),
+		] {
+			assert_eq!(params.get(key).map(String::as_str), Some(expected), "{key}");
+		}
+	}
 	#[test]
 	fn stream_preview_accepts_only_the_requested_discord_cdn_path() {
 		let key = "guild:1:2:3";

@@ -3200,6 +3200,7 @@ impl MessagingUi {
 		};
 		let phase = call.phase;
 		let camera = call.camera;
+		let call_guild = call.guild;
 		let can_camera = self.voice_camera_available
 			&& state.can_camera(channel)
 			&& matches!(phase, Phase::Connected | Phase::Waiting);
@@ -3251,6 +3252,7 @@ impl MessagingUi {
 		let mut camera_clicked = false;
 		let mut mute_clicked = false;
 		let mut deafen_clicked = false;
+		let mut soundboard_action = None;
 		let mut leave = false;
 		let mut stop_watching = false;
 		let mut row = ui.new_child(
@@ -3369,7 +3371,69 @@ impl MessagingUi {
 							deafen_clicked = true;
 							ui.close();
 						}
+						ui.separator();
+						if ui
+							.button(crate::i18n::translate_if_key("activity-search-browse"))
+							.clicked()
+						{
+							self.activity_picker_open = true;
+							ui.close();
+						}
+						if let Some(guild) = call_guild {
+							ui.separator();
+							ui.label("Soundboard");
+							let catalog = state
+								.server_admin
+								.soundboard
+								.as_ref()
+								.filter(|catalog| catalog.guild == guild);
+							if let Some(catalog) = catalog {
+								if catalog.items.is_empty() {
+									ui.weak(crate::i18n::translate_if_key(
+										"server-soundboard-no-sounds",
+									));
+								}
+								for sound in catalog.items.iter().filter(|sound| sound.available) {
+									if ui
+										.add_enabled(
+											state.can_play_guild_soundboard(
+												guild, channel, sound.id,
+											) && !state.server_admin.pending,
+											egui::Button::new(format!(
+												"{}  {}",
+												sound.emoji_name.as_deref().unwrap_or("🔊"),
+												sound.name
+											)),
+										)
+										.clicked()
+									{
+										soundboard_action =
+											Some(model::server_admin::Action::PlaySoundboard {
+												channel,
+												sound: sound.id,
+												source_guild: guild,
+											});
+										ui.close();
+									}
+								}
+							} else if state.can_read_soundboard(guild, Some(channel))
+								&& !state.server_admin.pending
+								&& ui.button("Load this server’s sounds").clicked()
+							{
+								soundboard_action =
+									Some(model::server_admin::Action::LoadSoundboard {
+										channel: Some(channel),
+									});
+								ui.close();
+							}
+						}
 					});
+				if let Some(action) = soundboard_action
+					&& let Some(guild) = call_guild
+					&& let Some(command) = state.request_server_admin(guild, action)
+				{
+					commands.push(command);
+				}
 			});
 		}
 		// While a watched share is enlarged, the red action stops watching, as in Discord.
@@ -5989,6 +6053,7 @@ mod tests {
 				position: 0,
 				name: "Synthetic DM".into(),
 				kind: 1,
+				nsfw: None,
 				recipients: vec![model::User {
 					id: Id(2),
 					name: "Synthetic peer".into(),

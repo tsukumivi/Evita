@@ -59,7 +59,8 @@ mod tests {
 			id: id.into(),
 			title: "Synthetic quest".into(),
 			description: "Synthetic objective".into(),
-			progress: "In progress".into(),
+			progress: String::new(),
+			progress_percent: None,
 			image: None,
 		}
 	}
