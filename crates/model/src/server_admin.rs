@@ -31,7 +31,7 @@ pub struct Stickers {
 	pub items: Vec<Sticker>,
 	pub limit: Option<usize>,
 }
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct SoundboardSound {
 	pub id: Id,
 	pub guild_id: Option<Id>,
@@ -68,7 +68,7 @@ impl SoundboardSound {
 			&& self.bytes() <= 4096
 	}
 }
-#[derive(Clone, Debug, Default)]
+#[derive(Clone)]
 pub struct Soundboard {
 	pub guild: Id,
 	pub items: Vec<SoundboardSound>,
