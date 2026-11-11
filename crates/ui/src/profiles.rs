@@ -587,6 +587,27 @@ fn square_action(ui: &mut egui::Ui, theme: &Theme, icon: Icon, label: &str) -> e
 	response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, enabled, &label));
 	response.on_hover_text(label)
 }
+/// Discord's primary message action in the full profile and its empty Activity tab.
+fn message_button(ui: &mut egui::Ui, state: &State, user: &User) -> egui::Response {
+	let colors = design::palette(ui);
+	let label = crate::i18n::translate("friends-message");
+	let enabled = state.can_open_user_dm(user);
+	let response = ui.add_enabled(
+		enabled,
+		egui::Button::new((
+			icons::atom(Icon::Forum, 16.0, colors.accent_text),
+			RichText::new(label.clone())
+				.strong()
+				.color(colors.accent_text),
+		))
+		.fill(colors.accent)
+		.stroke(Stroke::NONE)
+		.corner_radius(8)
+		.min_size(vec2(112.0, FULL_ACTION)),
+	);
+	response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, enabled, &label));
+	response.on_hover_text(crate::i18n::translate("profiles-message-send"))
+}
 /// Server tag chip beside the profile name or username.
 fn clan_chip(
 	ui: &mut egui::Ui,
@@ -753,15 +774,30 @@ fn header_circle(ui: &mut egui::Ui, icon: Icon, label: &str, enabled: bool) -> e
 	response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, enabled, &label));
 	response.on_hover_text(label)
 }
-/// Add-friend circle; hidden for blocked users, whose relationship lives in the overflow menu.
+/// Friend action: compact circles in popouts, and labeled actions in the full profile.
 fn friend_button(ui: &mut egui::Ui, state: &State, user: &User, compact: bool) -> Option<Action> {
 	if !friend_target(state, user) || state.user_blocked(user.id) != Some(false) {
 		return None;
 	}
 	let friend = state.friends().any(|friend| friend.id == user.id);
 	if friend && !compact {
-		ui.label(RichText::new(crate::i18n::translate("friends")).strong());
-		return None;
+		let colors = design::palette(ui);
+		let enabled = actions_enabled(state);
+		let text = ui.visuals().text_color();
+		let label = crate::i18n::translate("friends");
+		let response = ui.add_enabled(
+			enabled,
+			egui::Button::new((
+				icons::atom(Icon::Check, 16.0, text),
+				RichText::new(label.clone()).strong().color(text),
+			))
+			.fill(colors.raised)
+			.stroke(Stroke::NONE)
+			.corner_radius(8)
+			.min_size(vec2(0.0, FULL_ACTION)),
+		);
+		response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, enabled, &label));
+		return response.clicked().then_some(Action::RemoveFriend);
 	}
 	let request = state
 		.pending_friends()
@@ -1323,8 +1359,24 @@ fn activity_summary(activity: &model::RichActivity) -> String {
 }
 
 pub(crate) fn subtitle(custom: Option<&str>, activities: &[model::RichActivity]) -> Option<String> {
-	activities
-		.first()
+	custom.map(str::to_owned).or_else(|| {
+		activities.first().map(|activity| {
+			if is_spotify(activity) {
+				activity
+					.state
+					.clone()
+					.unwrap_or_else(|| activity_summary(activity))
+			} else {
+				activity_summary(activity)
+			}
+		})
+	})
+}
+
+pub(crate) fn activity_tooltip(activities: &[model::RichActivity]) -> Option<String> {
+	let text = activities
+		.iter()
+		.take(3)
 		.map(|activity| {
 			if is_spotify(activity) {
 				activity
@@ -1335,7 +1387,25 @@ pub(crate) fn subtitle(custom: Option<&str>, activities: &[model::RichActivity])
 				activity_summary(activity)
 			}
 		})
-		.or_else(|| custom.map(str::to_owned))
+		.collect::<Vec<_>>()
+		.join("\n");
+	(!text.is_empty()).then(|| text.chars().take(256).collect())
+}
+
+pub(crate) fn activity_badge(
+	ui: &mut egui::Ui,
+	id: egui::Id,
+	activities: &[model::RichActivity],
+	size: f32,
+	color: Color32,
+) -> bool {
+	let Some(tip) = activity_tooltip(activities) else {
+		return false;
+	};
+	let rect = crate::icons::inline(ui, Icon::GameController, size, color);
+	ui.interact(rect, id, egui::Sense::hover())
+		.on_hover_text(tip);
+	true
 }
 
 fn rgb(value: u32) -> Color32 {
@@ -2317,6 +2387,7 @@ pub(crate) fn debug_activity_panel(state: &State) {
 				false,
 				None,
 				None,
+				None,
 				state,
 				activities,
 				&mut avatars,
@@ -2360,6 +2431,7 @@ fn full_panel(
 	ui: &mut egui::Ui,
 	tab: &mut FullTab,
 	own: bool,
+	target: Option<&User>,
 	data: Option<&model::UserProfile>,
 	view: Option<&ProfileView>,
 	state: &State,
@@ -2533,6 +2605,14 @@ fn full_panel(
 						RichText::new(crate::i18n::translate("profiles-activity-empty"))
 							.color(theme.muted),
 					);
+					if !own && let Some(user) = target {
+						ui.add_space(4.0);
+						if message_button(ui, state, user).clicked() {
+							action = Some(Action::Menu(crate::user_menu::Action::Message(
+								user.clone(),
+							)));
+						}
+					}
 				}
 			}
 			FullTab::Friends | FullTab::Servers => {
@@ -3861,25 +3941,13 @@ fn card_view(
 							ui.add_space(16.0);
 							ui.horizontal_wrapped(|ui| {
 								ui.spacing_mut().item_spacing = vec2(8.0, 8.0);
-								if let Some(picked) = friend_button(ui, state, user, false) {
-									action = Some(picked);
-								}
-								if !own
-									&& ui
-										.add_enabled_ui(state.can_open_user_dm(user), |ui| {
-											square_action(
-												ui,
-												&theme,
-												Icon::Forum,
-												"profiles-message-send",
-											)
-										})
-										.inner
-										.clicked()
-								{
+								if !own && message_button(ui, state, user).clicked() {
 									action = Some(Action::Menu(crate::user_menu::Action::Message(
 										user.clone(),
 									)));
+								}
+								if let Some(picked) = friend_button(ui, state, user, false) {
+									action = Some(picked);
 								}
 								let more =
 									square_action(ui, &theme, Icon::More, "profiles-show-more");
@@ -4347,6 +4415,7 @@ fn card_view(
 											ui,
 											&mut full_tab,
 											own_card,
+											Some(user),
 											data,
 											view,
 											state,
@@ -4369,6 +4438,7 @@ fn card_view(
 								ui,
 								&mut full_tab,
 								own_card,
+								Some(user),
 								data,
 								view,
 								state,
@@ -4793,6 +4863,7 @@ mod tests {
 				ui,
 				&mut tab,
 				true,
+				Some(&user),
 				Some(&profile),
 				None,
 				&state,
@@ -4808,6 +4879,78 @@ mod tests {
 		assert!(tab == FullTab::Board);
 		assert!(!labels.contains(&crate::i18n::translate("profiles-show-mutual-friends")));
 		assert!(!labels.contains(&crate::i18n::translate("profiles-show-mutual-servers")));
+	}
+
+	#[test]
+	fn other_profile_empty_activity_opens_its_message_action() {
+		let ctx = egui::Context::default();
+		ctx.enable_accesskit();
+		let state = test_support::demo_state();
+		let mut user = test_support::message(1, Id(22)).author;
+		user.id = Id(991);
+		let profile = synthetic(&user, None);
+		assert!(state.can_open_user_dm(&user));
+		let mut tab = FullTab::Activity;
+		let mut avatars = Avatars::default();
+		let mut chosen = None;
+		let mut render = |events, chosen: &mut Option<Action>| {
+			ctx.run_ui(input(vec2(600.0, 600.0), events), |ui| {
+				let theme = Theme::new(&design::palette(ui), None);
+				if let Some(action) = full_panel(
+					ui,
+					&mut tab,
+					false,
+					Some(&user),
+					Some(&profile),
+					None,
+					&state,
+					&[],
+					&mut avatars,
+					&theme,
+				) {
+					*chosen = Some(action);
+				}
+			})
+		};
+		let output = render(vec![], &mut chosen);
+		let bounds = output
+			.platform_output
+			.accesskit_update
+			.as_ref()
+			.unwrap()
+			.nodes
+			.iter()
+			.find_map(|(_, node)| {
+				(node.label() == Some(crate::i18n::translate("friends-message").as_str()))
+					.then(|| node.bounds())
+					.flatten()
+			})
+			.expect("full profile message button");
+		let target = pos2(
+			((bounds.x0 + bounds.x1) * 0.5) as f32,
+			((bounds.y0 + bounds.y1) * 0.5) as f32,
+		);
+		output.drop_without_applying_deltas();
+		for pressed in [true, false] {
+			render(
+				vec![
+					egui::Event::PointerMoved(target),
+					egui::Event::PointerButton {
+						pos: target,
+						button: egui::PointerButton::Primary,
+						pressed,
+						modifiers: egui::Modifiers::NONE,
+					},
+				],
+				&mut chosen,
+			)
+			.drop_without_applying_deltas();
+		}
+		assert!(matches!(
+			chosen,
+			Some(Action::Menu(crate::user_menu::Action::Message(message)))
+				if message.id == user.id
+		));
 	}
 
 	#[test]
@@ -5190,23 +5333,21 @@ mod tests {
 		let mut view = crate::MessagingUi::default();
 		let mut commands = Vec::new();
 		let mut chosen = None;
-		let render_button = |events, chosen: &mut Option<Action>| {
+		let render_button = |events, compact, chosen: &mut Option<Action>| {
 			ctx.run_ui(input(size, events), |ui| {
-				if let Some(action) = friend_button(ui, &state, &person, true) {
+				if let Some(action) = friend_button(ui, &state, &person, compact) {
 					*chosen = Some(action);
 				}
 			})
 		};
-		let output = render_button(vec![], &mut chosen);
-		let position = output
-			.shapes
-			.iter()
-			.find_map(|s| match &s.shape {
-				egui::Shape::Circle(c) if (c.radius - CIRCLE * 0.5).abs() < 0.5 => Some(c.center),
-				_ => None,
-			})
-			.expect("friend circle");
-		output.drop_without_applying_deltas();
+		let full = render_button(vec![], false, &mut chosen);
+		let full_position = ctx
+			.interactive_rects_last_pass()
+			.into_iter()
+			.next()
+			.expect("full-profile friend status button hitbox")
+			.center();
+		full.drop_without_applying_deltas();
 		let pointer = |position, pressed| {
 			vec![
 				egui::Event::PointerMoved(position),
@@ -5218,8 +5359,22 @@ mod tests {
 				},
 			]
 		};
-		render_button(pointer(position, true), &mut chosen).drop_without_applying_deltas();
-		render_button(pointer(position, false), &mut chosen).drop_without_applying_deltas();
+		render_button(pointer(full_position, true), false, &mut chosen)
+			.drop_without_applying_deltas();
+		render_button(pointer(full_position, false), false, &mut chosen)
+			.drop_without_applying_deltas();
+		assert!(matches!(chosen, Some(Action::RemoveFriend)));
+		chosen = None;
+		let output = render_button(vec![], true, &mut chosen);
+		let position = ctx
+			.interactive_rects_last_pass()
+			.into_iter()
+			.next()
+			.expect("compact friend status button hitbox")
+			.center();
+		output.drop_without_applying_deltas();
+		render_button(pointer(position, true), true, &mut chosen).drop_without_applying_deltas();
+		render_button(pointer(position, false), true, &mut chosen).drop_without_applying_deltas();
 		assert!(matches!(chosen, Some(Action::RemoveFriend)));
 		assert!(!state.user_action_pending());
 		view.friend_removal = Some((state.generation, person.clone()));
@@ -5462,6 +5617,28 @@ mod tests {
 		assert_eq!(
 			presence(&state, user.id, Some(Id(10))),
 			(None, None, [].as_slice(), model::ClientPlatforms::default())
+		);
+	}
+
+	#[test]
+	fn activity_does_not_replace_custom_status_and_remains_available_for_tooltips() {
+		let activities = [model::RichActivity {
+			kind: 0,
+			name: "Example game".into(),
+			details: None,
+			state: None,
+			image: None,
+			small_image: None,
+			started_at: None,
+			ends_at: None,
+		}];
+		assert_eq!(
+			subtitle(Some("Custom status"), &activities),
+			Some("Custom status".into())
+		);
+		assert_eq!(
+			activity_tooltip(&activities).as_deref(),
+			Some("Playing Example game")
 		);
 	}
 

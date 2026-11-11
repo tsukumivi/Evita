@@ -70,6 +70,8 @@ pub enum Operation {
 	SaveGifFavorites(Vec<model::Gif>),
 	LoadStickerFavorites,
 	SaveStickerFavorites(Vec<model::Sticker>),
+	LoadEmojiFavorites,
+	SaveEmojiFavorites(Vec<model::EmojiFavorite>),
 	UpdateMessageAuthor(Box<model::User>),
 	LoadChannelPreferences,
 	SaveChannelPreferences(model::ChannelPreferences),
@@ -123,6 +125,7 @@ pub enum Outcome {
 	Drafts(BTreeMap<Id, String>),
 	GifFavorites(Vec<model::Gif>),
 	StickerFavorites(Vec<model::Sticker>),
+	EmojiFavorites(Vec<model::EmojiFavorite>),
 	ChannelPreferences(Result<model::ChannelPreferences, StoreError>),
 	ChannelPreferencesSaved(Result<(), StoreError>),
 	AccountPresences(Result<std::collections::BTreeMap<model::Id, model::OwnPresence>, StoreError>),
@@ -285,6 +288,12 @@ impl Cache {
 						.map(model::Sticker::heap_bytes)
 						.sum::<usize>()
 			}
+			Operation::SaveEmojiFavorites(favorites) => {
+				if !model::valid_emoji_favorites(favorites) {
+					return false;
+				}
+				model::emoji_favorite_bytes(favorites)
+			}
 			Operation::UpdateMessageAuthor(user) => {
 				if user.id.0 == 0 || user.name.len() > 128 {
 					return false;
@@ -384,6 +393,7 @@ impl Cache {
 								.map(model::Sticker::heap_bytes)
 								.sum::<usize>()
 					}
+					Outcome::EmojiFavorites(favorites) => model::emoji_favorite_bytes(favorites),
 					Outcome::Accounts { roster, pruned } => {
 						roster.as_ref().map_or(0, |accounts| {
 							accounts
@@ -590,6 +600,10 @@ fn execute(
 		Operation::SaveStickerFavorites(_) => {
 			"Could not save sticker favorites; the change exists only in this session"
 		}
+		Operation::LoadEmojiFavorites => "Could not restore emoji favorites from local storage",
+		Operation::SaveEmojiFavorites(_) => {
+			"Could not save emoji favorites; the change exists only in this session"
+		}
 		Operation::UpdateMessageAuthor(_) => {
 			"Could not update cached message authors in local storage"
 		}
@@ -650,6 +664,12 @@ fn execute(
 				.map(Outcome::StickerFavorites),
 			Operation::SaveStickerFavorites(favorites) => store
 				.save_sticker_favorites(account, &favorites)
+				.map(|_| Outcome::Saved),
+			Operation::LoadEmojiFavorites => {
+				store.emoji_favorites(account).map(Outcome::EmojiFavorites)
+			}
+			Operation::SaveEmojiFavorites(favorites) => store
+				.save_emoji_favorites(account, &favorites)
 				.map(|_| Outcome::Saved),
 			Operation::UpdateMessageAuthor(user) => store
 				.update_message_author(account, &user)

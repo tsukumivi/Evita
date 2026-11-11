@@ -723,18 +723,13 @@ impl MessagingUi {
 										restricted.is_none() && voice_users.contains(&user.id),
 										true,
 									);
-									if let Some(activity) = activities.first() {
-										icons::inline(
-											ui,
-											if activity.kind == 2 {
-												Icon::Spotify
-											} else {
-												Icon::GameController
-											},
-											14.0,
-											colors.positive,
-										);
-									}
+									profiles::activity_badge(
+										ui,
+										ui.scope_id().with(("friend-activity", user.id)),
+										activities,
+										14.0,
+										colors.positive,
+									);
 									ui.add(
 										egui::Label::new(
 											RichText::new(&subtitle).size(13.0).color(colors.muted),

@@ -4,7 +4,7 @@ default-members = ["apps/desktop"]
 resolver = "3"
 
 [workspace.package]
-version = "0.1.0"
+version = "1.0.0"
 edition = "2024"
 rust-version = "1.98"
 license = "MIT OR Apache-2.0"
@@ -37,10 +37,11 @@ thiserror = "2"
 url = "2"
 platform = { path = "crates/platform" }
 local-store = { path = "crates/local-store" }
-rusqlite = { version = "=0.40.2", default-features = false, features = ["bundled", "cache"] }
+rusqlite = { version = "=0.41.1", default-features = false, features = ["bundled", "cache"] }
 dirs = "=7.0.0"
 getrandom = "0.4"
 time = { version = "0.3", features = ["parsing"] }
+wuff = { version = "=0.2.10", default-features = false, features = ["brotli"] }
 wry = { version = "=0.57.0", default-features = false, features = ["os-webview"] }
 keyring = "=4.2.0"
 keyring-core = "=1.0.0"

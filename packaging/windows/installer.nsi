@@ -19,8 +19,12 @@ SetCompressor /SOLID lzma
 !define APP_EXE "evita.exe"
 !define APP_ID "app.evita.client"
 
-!ifndef VERSION
-  !define VERSION "0.1.0"
+!ifndef EVITA_VERSION
+  !error "EVITA_VERSION must be supplied by the package build"
+!endif
+
+!ifndef EVITA_FILE_VERSION
+  !error "EVITA_FILE_VERSION must be supplied by the package build"
 !endif
 
 !ifndef DIST_DIR
@@ -39,8 +43,13 @@ SetCompressor /SOLID lzma
   !endif
 !endif
 
-Name "${PRODUCT_NAME} ${VERSION}"
-OutFile "${OUTPUT_DIR}\evita-${VERSION}-setup.exe"
+Name "${PRODUCT_NAME} ${EVITA_VERSION}"
+OutFile "${OUTPUT_DIR}\evita-${EVITA_VERSION}-setup.exe"
+VIProductVersion "${EVITA_FILE_VERSION}"
+VIAddVersionKey /LANG=1033 "ProductName" "${PRODUCT_NAME}"
+VIAddVersionKey /LANG=1033 "ProductVersion" "${EVITA_VERSION}"
+VIAddVersionKey /LANG=1033 "FileVersion" "${EVITA_VERSION}"
+VIAddVersionKey /LANG=1033 "FileDescription" "${PRODUCT_NAME} Setup"
 InstallDir "$LOCALAPPDATA\Programs\Evita"
 InstallDirRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}" "InstallLocation"
 
@@ -209,7 +218,7 @@ Section "MainSection" SEC01
 
   ; Write Add/Remove Programs uninstall registry keys
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}" "DisplayName" "${PRODUCT_NAME}"
-  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}" "DisplayVersion" "${VERSION}"
+  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}" "DisplayVersion" "${EVITA_VERSION}"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}" "Publisher" "${PRODUCT_PUBLISHER}"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}" "DisplayIcon" "$INSTDIR\${APP_EXE},0"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}" "InstallLocation" "$INSTDIR"

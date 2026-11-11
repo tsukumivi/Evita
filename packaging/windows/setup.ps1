@@ -74,7 +74,7 @@ if (Test-Path -LiteralPath $notificationScript) {
 }
 
 # Determine version
-$version = '0.1.0'
+$version = '1.0.0'
 try {
     $versionInfo = (Get-Item -LiteralPath (Join-Path $installDir 'evita.exe')).VersionInfo.ProductVersion
     if ($versionInfo) { $version = $versionInfo }

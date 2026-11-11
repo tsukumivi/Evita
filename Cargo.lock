@@ -201,6 +201,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "alloc-no-stdlib"
+version = "3.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c2fb6cfd47bf496ff64095c20eaba0c201404ee38714d4142fcfa1dc334fcc7a"
+
+[[package]]
 name = "allocator-api2"
 version = "0.2.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -715,6 +721,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "brotli-decompressor"
+version = "6.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "97d9071e5b45944c5a9c06baf13a7a65ffa2c88c204015967852c90869692c05"
+dependencies = [
+ "alloc-no-stdlib",
+]
+
+[[package]]
 name = "bumpalo"
 version = "3.20.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -948,7 +963,7 @@ dependencies = [
 
 [[package]]
 name = "client-core"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "model",
  "session-cache",
@@ -1433,7 +1448,7 @@ dependencies = [
 
 [[package]]
 name = "diagnostics"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "rustix 1.1.5",
  "serde",
@@ -1488,7 +1503,7 @@ dependencies = [
 
 [[package]]
 name = "discord-api"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "client-core",
  "discord-protocol",
@@ -1503,7 +1518,7 @@ dependencies = [
 
 [[package]]
 name = "discord-gateway"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "client-core",
  "discord-protocol",
@@ -1520,7 +1535,7 @@ dependencies = [
 
 [[package]]
 name = "discord-protocol"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "base64 0.22.1",
  "model",
@@ -1534,7 +1549,7 @@ dependencies = [
 
 [[package]]
 name = "discord-voice"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "block2 0.6.2",
  "chacha20poly1305",
@@ -2028,7 +2043,7 @@ dependencies = [
 
 [[package]]
 name = "evita"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "arboard",
  "client-core",
@@ -2039,6 +2054,7 @@ dependencies = [
  "discord-protocol",
  "discord-voice",
  "eframe",
+ "egui",
  "egui-winit",
  "extensions",
  "find-msvc-tools",
@@ -2069,6 +2085,7 @@ dependencies = [
  "ui",
  "url",
  "winit",
+ "wuff",
  "zeroize",
  "zip",
 ]
@@ -2090,7 +2107,7 @@ checksum = "af9673d8203fcb076b19dfd17e38b3d4ae9f44959416ea532ce72415a6020365"
 
 [[package]]
 name = "extensions"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "evita-extension-sdk",
  "serde",
@@ -3851,9 +3868,9 @@ dependencies = [
 
 [[package]]
 name = "libsqlite3-sys"
-version = "0.38.2"
+version = "0.39.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f1d20bef17f513b9b3004532233187769cd072d790971f4e4da0e346eb6401e8"
+checksum = "14a5f01b87b92705d07b433c06f96cbc764637d81a0bffb5734ce17cf0f9a2b3"
 dependencies = [
  "cc",
  "pkg-config",
@@ -3892,7 +3909,7 @@ checksum = "11d3d7f243d5c5a8b9bb5d6dd2b1602c0cb0b9db1621bafc7ed66e35ff9fe092"
 
 [[package]]
 name = "local-store"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "diagnostics",
  "dirs",
@@ -4039,7 +4056,7 @@ dependencies = [
 
 [[package]]
 name = "model"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "serde",
  "zeroize",
@@ -5281,7 +5298,7 @@ checksum = "b4596b6d070b27117e987119b4dac604f3c58cfb0b191112e24771b2faeac1a6"
 
 [[package]]
 name = "platform"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "ashpd",
  "client-core",
@@ -5858,7 +5875,7 @@ checksum = "19b30a45b0cd0bcca8037f3d0dc3421eaf95327a17cad11964fb8179b4fc4832"
 
 [[package]]
 name = "replay-bench"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "client-core",
  "model",
@@ -5997,9 +6014,9 @@ checksum = "9278fb35b3e730abe136e9b395b5b81b96d06b9f5478a50f0c8430a2237b22de"
 
 [[package]]
 name = "rusqlite"
-version = "0.40.2"
+version = "0.41.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "23f2a97da3e3873c73cb2a2e71b35c40ff95e0b1eefa8d72d8499a6928c3b5b3"
+checksum = "da9bba6f3506135e120a6586df05be18b48d18896600646a4bec8f993d91a594"
 dependencies = [
  "bitflags 2.13.2",
  "fallible-iterator",
@@ -6427,7 +6444,7 @@ dependencies = [
 
 [[package]]
 name = "session-cache"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "model",
 ]
@@ -7151,7 +7168,7 @@ dependencies = [
 
 [[package]]
 name = "test-support"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "client-core",
  "model",
@@ -7545,7 +7562,7 @@ dependencies = [
 
 [[package]]
 name = "tray-debug"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "egui",
  "image",
@@ -7631,7 +7648,7 @@ dependencies = [
 
 [[package]]
 name = "ui"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "bytemuck",
  "client-core",
@@ -9082,6 +9099,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "wuff"
+version = "0.2.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f6a992b57b3d1ee972b2e3fd9225e44793104d49818836dd812d5459187712dd"
+dependencies = [
+ "brotli-decompressor",
+ "bytes",
+]
+
+[[package]]
 name = "x11-dl"
 version = "2.21.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9158,7 +9185,7 @@ checksum = "e450f9b2ed1dff33c94c12589a87338689467b9c4f5d8a5710bd09a847d2c8a7"
 
 [[package]]
 name = "xtask"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "client-core",
  "model",

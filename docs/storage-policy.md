@@ -1997,3 +1997,5 @@ the native projection retains its existing URL and allocated-byte limits.
 Schema 28 adds the device-wide double-click reaction preset to the reading settings singleton. The bounded index selects one of six Unicode emoji, defaults to ❤️, and persists independently of session emoji recommendations.
 
 Schema 29 adds a bounded boolean opt-in for double-click reactions, disabled for new and migrated settings. The selected Unicode preset is retained while disabled; Reset chat restores the disabled default.
+
+Schema 30 adds account-isolated emoji favorites (at most 100 entries and 16 KiB per account). Unicode sequences and custom emoji IDs/names are stored without image bytes or CDN URLs. Favorites are local picker state; they do not grant Nitro eligibility or change Discord's send/reaction permissions.

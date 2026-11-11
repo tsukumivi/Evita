@@ -441,6 +441,18 @@ pub struct MessagingUi {
 	/// New attachments cannot be selected right now. Loading files and an upload in flight
 	/// do not set this: further files join the composer and sending waits instead.
 	pub attach_busy: bool,
+	/// Requests handled by the desktop capture/upload host; samples never enter UI state.
+	pub voice_message_start_requested: bool,
+	pub voice_message_stop_requested: bool,
+	pub voice_message_cancel_requested: bool,
+	pub voice_message_send_requested: bool,
+	pub voice_message_recording: bool,
+	pub voice_message_starting: bool,
+	pub voice_message_encoding: bool,
+	pub voice_message_restored: bool,
+	pub voice_message_ready_secs: Option<u64>,
+	pub voice_message_elapsed_secs: u64,
+	pub voice_message_status: &'static str,
 	/// Selected files still being inspected; shown as loading tiles in the upload tray.
 	pub attachment_loading: usize,
 	pub external_upload: external_upload::ExternalUpload,
@@ -1848,29 +1860,22 @@ impl MessagingUi {
 											let trailing =
 												profiles::server_tag_width(ui, server_tag)
 													+ if server_tag.is_some() { 5.0 } else { 0.0 };
-											crate::name_styles::in_row(
-												response.contains_pointer() || response.has_focus(),
-												|| {
-													account_badge::name(
-														ui,
-														&member.user,
-														name,
-														15.0,
-														(
-															text_color,
-															role_colors,
-															if response.hovered()
-																|| response.has_focus()
-															{
-																colors.hover
-															} else {
-																colors.sidebar
-															},
-														),
-														egui::Sense::hover(),
-														trailing,
-													)
-												},
+											account_badge::server_member_name(
+												ui,
+												&member.user,
+												name,
+												15.0,
+												(
+													text_color,
+													role_colors,
+													if response.hovered() || response.has_focus() {
+														colors.hover
+													} else {
+														colors.sidebar
+													},
+												),
+												egui::Sense::hover(),
+												trailing,
 											);
 											if let Some(tag) = server_tag {
 												profiles::server_tag(
@@ -1893,23 +1898,20 @@ impl MessagingUi {
 											egui::Layout::left_to_right(egui::Align::Center),
 											|ui| {
 												ui.spacing_mut().item_spacing.x = 4.0;
+												let has_activity = profiles::activity_badge(
+													ui,
+													ui.scope_id()
+														.with(("member-activity", member.user.id)),
+													activities,
+													12.0,
+													colors.positive,
+												);
 												profiles::voice_badge(
 													ui,
 													in_voice,
-													subtitle.is_some(),
+													subtitle.is_some() || has_activity,
 												);
 												if let Some(subtitle) = subtitle {
-													if activities
-														.first()
-														.is_some_and(profiles::is_spotify)
-													{
-														icons::inline(
-															ui,
-															icons::Icon::Spotify,
-															12.0,
-															colors.positive,
-														);
-													}
 													ui.add(
 														egui::Label::new(
 															RichText::new(subtitle)
@@ -3507,6 +3509,24 @@ impl MessagingUi {
 				&& count_before > 0
 		} else if application_command {
 			self.slash_commands.can_submit(state, channel)
+		} else if self.voice_message_ready_secs.is_some() {
+			let attachments_ready = if self.voice_message_restored {
+				self.attachment_files.len() == 1
+					&& self.attachment_files[0].0 == "voice-message.ogg"
+					&& self.attachment_loading == 0
+			} else {
+				self.attachment_files.is_empty() && self.attachment_loading == 0
+			};
+			state.can_send(channel)
+				&& !self.upload_busy
+				&& !self.attach_busy
+				&& attachments_ready
+				&& state.reply.is_none()
+		} else if self.voice_message_recording
+			|| self.voice_message_starting
+			|| self.voice_message_encoding
+		{
+			false
 		} else {
 			state.can_send(channel)
 				&& (self.attachment.is_none() || state.can_attach(channel))
@@ -3515,6 +3535,11 @@ impl MessagingUi {
 				&& new_content_valid
 				&& !oversized
 		};
+		let voice_message_busy = self.voice_message_recording
+			|| self.voice_message_starting
+			|| self.voice_message_encoding
+			|| self.voice_message_restored
+			|| self.voice_message_ready_secs.is_some();
 		if cap_top.is_some() {
 			// The cap and the input form one block: undo the automatic vertical item gap.
 			ui.add_space(-ui.spacing().item_spacing.y);
@@ -3595,6 +3620,54 @@ impl MessagingUi {
                                 }
                             });
                     }
+					let can_record_voice = !voice_message_busy
+						&& !editing_here
+						&& !application_command
+						&& !state.demo
+						&& state.auth == client_core::auth::AuthState::Authenticated
+						&& state.gateway_connected
+						&& state.can_send(channel)
+						&& state.can_attach(channel)
+						&& state.reply.is_none()
+						&& state.drafts.get(&channel).is_none_or(String::is_empty)
+						&& self.attachment_files.is_empty()
+						&& self.attachment_loading == 0
+						&& !self.upload_busy
+						&& !self.attach_busy;
+					if can_record_voice {
+						if icons::button(
+							ui,
+							icons::Icon::Microphone,
+							28.0,
+							"Record voice message",
+						)
+						.clicked()
+						{
+							self.voice_message_start_requested = true;
+						}
+					} else if voice_message_busy {
+						if self.voice_message_recording
+							&& icons::button(
+								ui,
+								icons::Icon::Microphone,
+								28.0,
+								"Stop recording",
+							)
+							.clicked()
+						{
+							self.voice_message_stop_requested = true;
+						}
+						if icons::button(
+							ui,
+							icons::Icon::Close,
+							28.0,
+							"Discard voice message",
+						)
+						.clicked()
+					{
+						self.voice_message_cancel_requested = true;
+					}
+					}
                     });
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.spacing_mut().item_spacing.x = 4.0;
@@ -3602,12 +3675,16 @@ impl MessagingUi {
                         column(ui, &mut |ui| {
                         let send_button = ui
                             .add_enabled_ui(can_send, |ui| {
-                                icons::button(
-                                    ui,
-                                    icons::Icon::Send,
-                                    28.0,
-                                    &crate::i18n::translate_if_key(if editing_here { "lib-ime-updates-text-save-edit" } else if application_command { "lib-ime-updates-text-send-command" } else { "lib-ime-updates-text-send-message" }),
-                                )
+                                let send_label = if self.voice_message_ready_secs.is_some() {
+                                    "Send voice message".to_owned()
+                                } else if editing_here {
+                                    crate::i18n::translate("lib-ime-updates-text-save-edit")
+                                } else if application_command {
+                                    crate::i18n::translate("lib-ime-updates-text-send-command")
+                                } else {
+                                    crate::i18n::translate("lib-ime-updates-text-send-message")
+                                };
+                                icons::button(ui, icons::Icon::Send, 28.0, &send_label)
                             })
                             .inner;
                         let send = enter || send_button.clicked();
@@ -3847,7 +3924,7 @@ impl MessagingUi {
                                     egui::WidgetText::default()
                                 };
                                 let output = TextEdit::multiline(draft)
-                                    .interactive(keyboard_enabled)
+	                                    .interactive(keyboard_enabled && !voice_message_busy)
                                     .layouter(&mut layouter)
                                     .id(composer_id)
                                     .event_filter(egui::EventFilter {
@@ -3967,7 +4044,9 @@ impl MessagingUi {
                             && keyboard_enabled && !self.ime_active && !ime_this_frame
                             && self.slash_commands.can_submit(state, channel);
                         if (send || slash_run) && !cancel_edit {
-                            if let Some((edit_channel, message, content)) = &editing {
+	                            if self.voice_message_ready_secs.is_some() {
+								self.voice_message_send_requested = true;
+							} else if let Some((edit_channel, message, content)) = &editing {
                                 if state.freshness == Freshness::Fresh
                                     && let Some(command) = state.prepare_edit(*edit_channel, *message,
                                         if self.convert_emoticons { emoticons::convert(content) } else { content.clone() })
@@ -4000,7 +4079,21 @@ impl MessagingUi {
                 });
                 if let Some((edit_channel, message)) = editing_key {
                     if state.freshness != Freshness::Fresh || !state.can_edit(edit_channel, message) { ui.weak(crate::i18n::translate("lib-ime-updates-text-editing-this-message-is-unavailable-your-text-is-kept-until")); }
-                } else if !state.can_send(channel) && !application_command {
+				} else if self.voice_message_recording {
+					ui.weak(format!(
+						"Recording voice message · {:02}:{:02} / 02:00",
+						self.voice_message_elapsed_secs / 60,
+						self.voice_message_elapsed_secs % 60
+					));
+				} else if let Some(seconds) = self.voice_message_ready_secs {
+					ui.weak(format!(
+						"Voice message ready · {:02}:{:02}",
+						seconds / 60,
+						seconds % 60
+					));
+				} else if !self.voice_message_status.is_empty() {
+					ui.weak(self.voice_message_status);
+				} else if !state.can_send(channel) && !application_command {
                     ui.weak(crate::i18n::translate("lib-ime-updates-text-sending-messages-is-unavailable-in-this-conversation-your-draft-is"));
                 } else if self.attachment.is_some() && !state.can_attach(channel) {
                     ui.weak(crate::i18n::translate("lib-ime-updates-text-attaching-files-is-unavailable-here-remove-the-attachment-to-send"));

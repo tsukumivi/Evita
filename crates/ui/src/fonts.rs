@@ -399,118 +399,170 @@ const INTER: &[u8] = include_bytes!("../../../assets/fonts/Inter-Regular.ttf");
 const INTER_MEDIUM: &[u8] = include_bytes!("../../../assets/fonts/Inter-Medium.ttf");
 const INTER_SEMIBOLD: &[u8] = include_bytes!("../../../assets/fonts/Inter-SemiBold.ttf");
 
-/// Discord display-name fonts by `display_name_styles.font_id`. Each is installed the first time
-/// a styled name needs it, so sessions with name styles off never parse them. Néo-Castel (7) is
-/// sold only through a checkout and Hexagon (17) has no identified source; both, Default (11)
-/// and unknown ids keep the interface font.
-const NAME_FONTS: [(u32, &str, &[u8]); 14] = [
-	(
-		1,
-		"Evita Name Bangers",
-		include_bytes!("../../../assets/fonts/Bangers-Regular.ttf"),
-	),
-	(
-		2,
-		"Evita Name BioRhyme",
-		include_bytes!("../../../assets/fonts/BioRhyme.ttf"),
-	),
-	(
-		3,
-		"Evita Name Cherry Bomb",
-		include_bytes!("../../../assets/fonts/CherryBombOne-Regular.ttf"),
-	),
-	(
-		4,
-		"Evita Name Chicle",
-		include_bytes!("../../../assets/fonts/Chicle-Regular.ttf"),
-	),
-	(
-		5,
-		"Evita Name Compagnon",
-		include_bytes!("../../../assets/fonts/Compagnon-Roman.otf"),
-	),
-	(
-		6,
-		"Evita Name MuseoModerno",
-		include_bytes!("../../../assets/fonts/MuseoModerno.ttf"),
-	),
-	(
-		8,
-		"Evita Name Pixelify",
-		include_bytes!("../../../assets/fonts/PixelifySans.ttf"),
-	),
-	(
-		9,
-		"Evita Name Ribes",
-		include_bytes!("../../../assets/fonts/Ribes-Regular.otf"),
-	),
-	(
-		10,
-		"Evita Name Sinistre",
-		include_bytes!("../../../assets/fonts/Sinistre-Regular.otf"),
-	),
-	(
-		12,
-		"Evita Name Zilla Slab",
-		include_bytes!("../../../assets/fonts/ZillaSlab-Regular.ttf"),
-	),
-	(
-		13,
-		"Evita Name Playpen Sans",
-		include_bytes!("../../../assets/fonts/PlaypenSans.ttf"),
-	),
-	(
-		14,
-		"Evita Name Orbitron",
-		include_bytes!("../../../assets/fonts/Orbitron.ttf"),
-	),
-	(
-		15,
-		"Evita Name New Rocker",
-		include_bytes!("../../../assets/fonts/NewRocker-Regular.ttf"),
-	),
-	(
-		16,
-		"Evita Name Kalam",
-		include_bytes!("../../../assets/fonts/Kalam-Regular.ttf"),
-	),
-];
-
-/// The family for a name font, once it is active; otherwise queues its install for the next
-/// pass and returns `None`, so this pass keeps the interface font.
-pub(crate) fn name_family(ctx: &Context, font: u32) -> Option<FontFamily> {
-	static FAMILIES: std::sync::OnceLock<Vec<FontFamily>> = std::sync::OnceLock::new();
-	let index = NAME_FONTS.iter().position(|(id, ..)| *id == font)?;
-	let family = &FAMILIES.get_or_init(|| {
-		NAME_FONTS
-			.iter()
-			.map(|(_, name, _)| FontFamily::Name((*name).into()))
-			.collect()
-	})[index];
-	if ctx.fonts(|fonts| fonts.definitions().families.contains_key(family)) {
-		return Some(family.clone());
-	}
-	let shared = ctx.data(|data| {
-		data.get_temp::<Arc<Mutex<FontDefinitions>>>(egui::Id::unique(DEFINITIONS_KEY))
-	})?;
-	let mut definitions = shared.lock().expect("font definitions");
-	if !definitions.families.contains_key(family) {
-		add_name_font(&mut definitions, family.clone(), index);
-		ctx.set_fonts(definitions.clone());
-		ctx.request_repaint();
-	}
-	None
+/// Official Discord WOFF2 assets currently used for the corresponding public-client font IDs.
+/// These hashes are read from Discord's public stylesheet and can change without notice.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct NameFontAsset {
+	pub id: u32,
+	pub url: &'static str,
+	pub weight: u16,
 }
 
-/// The name face leads; the medium interface family covers scripts the face lacks.
-fn add_name_font(definitions: &mut FontDefinitions, family: FontFamily, index: usize) {
-	let (_, name, data) = NAME_FONTS[index];
-	let mut data = latin(data);
-	// Variable faces would otherwise draw their default instance; match the medium name weight.
-	data.tweak.coords = egui::epaint::text::VariationCoords::new([(b"wght", 500.0)]);
-	definitions.font_data.insert(name.into(), data.into());
-	definitions.families.insert(family, vec![name.to_owned()]);
-	sync_name_families(definitions);
+const NAME_FONTS: [NameFontAsset; 11] = [
+	NameFontAsset {
+		id: 3,
+		url: "https://discord.com/assets/33d4f12a85e1f736.woff2",
+		weight: 400,
+	}, // Cherry Bomb / Sakura
+	NameFontAsset {
+		id: 4,
+		url: "https://discord.com/assets/e6f5f44abb520735.woff2",
+		weight: 400,
+	}, // Chicle / Jellybean
+	NameFontAsset {
+		id: 6,
+		url: "https://discord.com/assets/c560709c3470bb66.woff2",
+		weight: 500,
+	}, // Museo Moderno / Modern
+	NameFontAsset {
+		id: 7,
+		url: "https://discord.com/assets/52b541f86401a5b6.woff2",
+		weight: 400,
+	}, // Néo-Castel / Medieval
+	NameFontAsset {
+		id: 8,
+		url: "https://discord.com/assets/69c735ca5c604de7.woff2",
+		weight: 400,
+	}, // Pixelify / 8Bit
+	NameFontAsset {
+		id: 10,
+		url: "https://discord.com/assets/8f20cb550d739cea.woff2",
+		weight: 400,
+	}, // Sinistre / Vampyre
+	NameFontAsset {
+		id: 12,
+		url: "https://discord.com/assets/27b34a77ba5d693e.woff2",
+		weight: 600,
+	}, // Zilla Slab / Tempo
+	NameFontAsset {
+		id: 13,
+		url: "https://discord.com/assets/45ef50dce38a931a.woff2",
+		weight: 700,
+	}, // Playpen Sans / Monkey Bars
+	NameFontAsset {
+		id: 14,
+		url: "https://discord.com/assets/4841dace333e9054.woff2",
+		weight: 700,
+	}, // Orbitron / Mainframe
+	NameFontAsset {
+		id: 15,
+		url: "https://discord.com/assets/c00df4f25667809b.woff2",
+		weight: 400,
+	}, // New Rocker / Headbang
+	NameFontAsset {
+		id: 16,
+		url: "https://discord.com/assets/aa59ae54ce7e540a.woff2",
+		weight: 700,
+	}, // Kalam / Journal
+];
+
+static REQUESTED_NAME_FONTS: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+static NAME_FONT_REQUESTS: std::sync::OnceLock<std::sync::Mutex<Vec<u32>>> =
+	std::sync::OnceLock::new();
+
+fn name_font_asset(id: u32) -> Option<NameFontAsset> {
+	NAME_FONTS.iter().find(|asset| asset.id == id).copied()
+}
+
+fn name_font_key(id: u32) -> String {
+	format!("evita-discord-name-font-{id}")
+}
+
+fn name_font_family(id: u32) -> FontFamily {
+	FontFamily::Name(format!("Evita Discord Name {id}").into())
+}
+
+fn request_name_font(id: u32) {
+	let Some(bit) = 1u32.checked_shl(id) else {
+		return;
+	};
+	if REQUESTED_NAME_FONTS.fetch_or(bit, std::sync::atomic::Ordering::Relaxed) & bit != 0 {
+		return;
+	}
+	let requests = NAME_FONT_REQUESTS.get_or_init(|| std::sync::Mutex::new(Vec::new()));
+	requests
+		.lock()
+		.unwrap_or_else(std::sync::PoisonError::into_inner)
+		.push(id);
+}
+
+/// Fonts are requested only while an enabled style is visible. The desktop loader fetches these
+/// unauthenticated public assets away from the UI thread; errors leave the interface font in use.
+pub fn take_name_font_requests() -> Vec<NameFontAsset> {
+	let Some(requests) = NAME_FONT_REQUESTS.get() else {
+		return Vec::new();
+	};
+	let mut requests = requests
+		.lock()
+		.unwrap_or_else(std::sync::PoisonError::into_inner);
+	requests.drain(..).filter_map(name_font_asset).collect()
+}
+
+/// Install one validated, already-decoded WOFF2 face. The desktop worker bounds and decodes the
+/// download off-thread; this function checks its OpenType tables before the renderer sees it.
+pub fn install_name_font(ctx: &Context, id: u32, mut bytes: Vec<u8>) -> bool {
+	let Some(asset) = name_font_asset(id) else {
+		return false;
+	};
+	use skrifa::{MetadataProvider, raw::TableProvider};
+	let valid = {
+		let Ok(font) = skrifa::FontRef::new(&bytes) else {
+			return false;
+		};
+		!font.head().map_or(true, |head| head.units_per_em() == 0)
+			&& font.hhea().is_ok()
+			&& font.maxp().is_ok()
+			&& font.hmtx().is_ok()
+			&& font.charmap().mappings().next().is_some()
+			&& font.outline_glyphs().format().is_some()
+	};
+	if !valid {
+		return false;
+	}
+	bytes.shrink_to_fit();
+	let Some(shared) = ctx.data(|data| {
+		data.get_temp::<Arc<Mutex<FontDefinitions>>>(egui::Id::unique(DEFINITIONS_KEY))
+	}) else {
+		return false;
+	};
+	let mut definitions = shared.lock().expect("font definitions");
+	let family = name_font_family(id);
+	if definitions.families.contains_key(&family) {
+		return true;
+	}
+	let mut data = FontData::from_owned(bytes);
+	data.tweak.hinting = Some(false);
+	data.tweak.subpixel_binning = Some(true);
+	data.tweak.coords =
+		egui::epaint::text::VariationCoords::new([(b"wght", f32::from(asset.weight))]);
+	let key = name_font_key(id);
+	definitions.font_data.insert(key.clone(), data.into());
+	definitions.families.insert(family, vec![key]);
+	sync_name_families(&mut definitions);
+	ctx.set_fonts(definitions.clone());
+	ctx.request_repaint();
+	true
+}
+
+/// Return a loaded name face, or queue it for background loading and keep the current UI font.
+pub(crate) fn name_family(ctx: &Context, font: u32) -> Option<FontFamily> {
+	name_font_asset(font)?;
+	let family = name_font_family(font);
+	if ctx.fonts(|fonts| fonts.definitions().families.contains_key(&family)) {
+		return Some(family);
+	}
+	request_name_font(font);
+	None
 }
 
 /// Each installed name family is its face followed by the current medium family, so a custom
@@ -521,8 +573,8 @@ fn sync_name_families(definitions: &mut FontDefinitions) {
 		.get(&FontFamily::Name(crate::design::MEDIUM.into()))
 		.cloned()
 		.unwrap_or_default();
-	for (_, name, _) in NAME_FONTS {
-		if let Some(list) = definitions.families.get_mut(&FontFamily::Name(name.into())) {
+	for asset in NAME_FONTS {
+		if let Some(list) = definitions.families.get_mut(&name_font_family(asset.id)) {
 			list.truncate(1);
 			list.extend(medium.iter().cloned());
 		}
@@ -788,68 +840,55 @@ mod tests {
 	}
 
 	#[test]
-	fn name_fonts_parse_install_on_first_use_and_keep_fallbacks() {
-		use skrifa::MetadataProvider;
-		assert!(
-			NAME_FONTS
-				.iter()
-				.map(|(.., data)| data.len())
-				.sum::<usize>()
-				<= 4 * 1024 * 1024
-		);
-		for (id, name, data) in NAME_FONTS {
-			let face = skrifa::FontRef::new(data).unwrap_or_else(|_| panic!("{name}"));
-			assert!(face.charmap().map('A').is_some(), "{name} lacks Latin");
-			assert!(!matches!(id, 0 | 7 | 11 | 17));
+	fn name_fonts_load_only_known_discord_assets_on_first_visible_use() {
+		assert!(name_font_asset(3).is_some());
+		assert!(name_font_asset(16).is_some());
+		for unavailable in [0, 1, 2, 5, 9, 11, 17, 18, u32::MAX] {
+			assert!(name_font_asset(unavailable).is_none());
 		}
 		let ctx = Context::default();
 		install(&ctx);
-		let mut families = Vec::new();
-		for _ in 0..2 {
-			ctx.run_ui(Default::default(), |ui| {
-				families.push(name_family(ui.ctx(), 1));
-				assert!(name_family(ui.ctx(), 11).is_none());
-				assert!(!ui.fonts(|fonts| {
-					fonts
-						.definitions()
-						.font_data
-						.contains_key("Evita Name Kalam")
-				}));
-			})
-			.drop_without_applying_deltas();
-		}
-		assert_eq!(families[0], None, "the first pass keeps the interface font");
-		let family = families[1].clone().expect("installed on the next pass");
-		ctx.run_ui(Default::default(), |ui| {
+		let mut initialized = ctx.run_ui(Default::default(), |_| {});
+		initialized.textures_delta.clear();
+		initialized.drop_without_applying_deltas();
+		assert!(name_family(&ctx, 3).is_none());
+		assert!(name_family(&ctx, 3).is_none());
+		let requests = take_name_font_requests();
+		assert_eq!(requests.iter().filter(|asset| asset.id == 3).count(), 1);
+		assert!(requests.iter().all(|asset| {
+			asset.url.starts_with("https://discord.com/assets/") && asset.url.ends_with(".woff2")
+		}));
+		assert!(install_name_font(&ctx, 3, INTER.to_vec()));
+		let family = name_family(&ctx, 3).expect("installed remote family");
+		let mut output = ctx.run_ui(Default::default(), |ui| {
 			let list = &ui.fonts(|fonts| fonts.definitions().families[&family].clone());
-			assert_eq!(list[0], "Evita Name Bangers");
+			assert_eq!(list[0], name_font_key(3));
 			assert!(list.iter().any(|face| face == "Inter Medium"));
 			assert!(list.iter().any(|face| face == "Noto Sans Arabic"));
 			ui.label(egui::RichText::new("Synthetic name").family(family.clone()));
-		})
-		.drop_without_applying_deltas();
+		});
+		output.textures_delta.clear();
+		output.drop_without_applying_deltas();
 	}
 
 	#[test]
 	fn name_families_follow_a_custom_font_that_is_set_then_removed() {
 		let ctx = Context::default();
 		install(&ctx);
-		for _ in 0..2 {
-			ctx.run_ui(Default::default(), |ui| {
-				name_family(ui.ctx(), 1);
-			})
-			.drop_without_applying_deltas();
-		}
+		let mut initialized = ctx.run_ui(Default::default(), |_| {});
+		initialized.textures_delta.clear();
+		initialized.drop_without_applying_deltas();
+		assert!(install_name_font(&ctx, 3, INTER.to_vec()));
 		let custom = CustomFont {
 			name: "Synthetic".into(),
 			data: FontData::from_static(INTER),
 		};
-		let family = FontFamily::Name("Evita Name Bangers".into());
+		let family = name_font_family(3);
 		apply_custom(&ctx, Some(&custom));
 		let list = ctx.fonts(|fonts| fonts.definitions().families[&family].clone());
-		assert_eq!(&list[..2], ["Evita Name Bangers", CUSTOM[1]]);
+		assert_eq!(&list[..2], [name_font_key(3), CUSTOM[1].to_owned()]);
 		apply_custom(&ctx, None);
-		ctx.run_ui(Default::default(), |ui| {
+		let mut output = ctx.run_ui(Default::default(), |ui| {
 			let definitions = ui.fonts(|fonts| fonts.definitions().clone());
 			assert!(
 				definitions.families[&family]
@@ -858,8 +897,9 @@ mod tests {
 			);
 			// Resolving the family panicked while it still named the removed custom font.
 			ui.label(egui::RichText::new("Synthetic name").family(family.clone()));
-		})
-		.drop_without_applying_deltas();
+		});
+		output.textures_delta.clear();
+		output.drop_without_applying_deltas();
 	}
 
 	#[test]

@@ -187,7 +187,7 @@ pub struct NameStyle {
 	pub colors: Vec<u32>,
 }
 impl NameStyle {
-	pub const MAX_COLORS: usize = 4;
+	pub const MAX_COLORS: usize = 5;
 	pub fn valid(&self) -> bool {
 		!self.colors.is_empty()
 			&& self.colors.len() <= Self::MAX_COLORS

@@ -34,6 +34,7 @@ mod gpu;
 mod gpu_video;
 mod group_icon;
 mod interaction_uploads;
+mod name_fonts;
 mod notification_runtime;
 mod notification_sounds;
 #[cfg(feature = "demo")]
@@ -65,6 +66,7 @@ mod updater;
 mod uploads;
 mod video;
 mod voice;
+mod voice_message;
 mod watch;
 use client_core::{
 	Command, Envelope, Event, State,
@@ -1082,6 +1084,10 @@ struct Desktop {
 	avatar_clear_account: Option<model::Id>,
 	avatar_cleanup: Option<std::sync::mpsc::Receiver<Result<(), &'static str>>>,
 	voice: voice::Voice,
+	voice_message_capture: Option<voice_message::Capture>,
+	voice_message_ready: Option<voice_message::Message>,
+	voice_message_scope: Option<(u64, model::Id)>,
+	pending_voice_metadata: Option<(u64, model::Id, discord_api::upload::VoiceMessageMetadata)>,
 	runtime: tokio::runtime::Runtime,
 	store: Option<credentials::Store>,
 	cache: Option<cache::Cache>,
@@ -2468,6 +2474,10 @@ impl Desktop {
 			avatar_start_failed: false,
 			avatar_clear_account: None,
 			voice: voice::Voice::default(),
+			voice_message_capture: None,
+			voice_message_ready: None,
+			voice_message_scope: None,
+			pending_voice_metadata: None,
 			runtime,
 			store,
 			cache,
@@ -3585,14 +3595,37 @@ impl Desktop {
 				.any(|p| p.nonce == *nonce && !p.attachments.is_empty())
 		{
 			let channel = *channel;
+			let is_voice_message = self.state.pending.iter().any(|pending| {
+				pending.nonce == *nonce
+					&& pending.channel == channel
+					&& pending.content.is_empty()
+					&& pending.attachments.as_slice() == ["voice-message.ogg"]
+			});
+			if !is_voice_message {
+				self.pending_voice_metadata = None;
+			}
+			let voice = if is_voice_message
+				&& self.pending_voice_metadata.as_ref().is_some_and(
+					|(generation, voice_channel, _)| {
+						*generation == self.state.generation && *voice_channel == channel
+					},
+				) {
+				self.pending_voice_metadata
+					.take()
+					.map(|(_, _, metadata)| metadata)
+			} else {
+				None
+			};
 			let available = attachment_send_allowed(&self.state, channel)
 				&& !self.fixture_only
 				&& self.connection.is_some();
 			if available
-				&& let Some(source) =
-					self.uploads
-						.take_source_for_message(self.state.generation, channel, nonce)
-			{
+				&& let Some(source) = self.uploads.take_source_for_message(
+					self.state.generation,
+					channel,
+					nonce,
+					voice.clone(),
+				) {
 				let (progress, receive) =
 					tokio::sync::watch::channel(discord_api::upload::Status::Preparing);
 				let (cancel, _) = tokio::sync::watch::channel(false);
@@ -3600,6 +3633,7 @@ impl Desktop {
 					let request = uploads::UploadRequest {
 						command,
 						source,
+						voice,
 						progress,
 						cancel,
 					};
@@ -3616,6 +3650,8 @@ impl Desktop {
 					}
 					return;
 				}
+			} else if let Some(metadata) = voice {
+				self.pending_voice_metadata = Some((self.state.generation, channel, metadata));
 			}
 			// Nothing left the client: keep the caption, reply and staged files for a retry.
 			let failure = "File not sent; check the connection and attachment, then send again";
@@ -3654,6 +3690,7 @@ impl Desktop {
 					let request = uploads::UploadRequest {
 						command,
 						source,
+						voice: None,
 						progress,
 						cancel,
 					};
@@ -4744,6 +4781,272 @@ impl Desktop {
 			connection.reconnect();
 		}
 	}
+	fn poll_voice_message(&mut self, ctx: &egui::Context) {
+		let current_scope = self
+			.state
+			.selected
+			.map(|channel| (self.state.generation, channel));
+		if self
+			.pending_voice_metadata
+			.as_ref()
+			.is_some_and(|(generation, channel, _)| current_scope != Some((*generation, *channel)))
+		{
+			if self.messaging.voice_message_restored {
+				self.uploads.remove();
+				self.messaging.voice_message_restored = false;
+				self.messaging.voice_message_ready_secs = None;
+			}
+			self.pending_voice_metadata = None;
+		}
+		if self.voice_message_scope.is_some_and(|scope| {
+			current_scope != Some(scope)
+				|| self.state.auth != AuthState::Authenticated
+				|| self.state.demo
+				|| self.fixture_only
+		}) {
+			if let Some(capture) = self.voice_message_capture.take() {
+				capture.cancel();
+			}
+			self.voice_message_ready = None;
+			self.voice_message_scope = None;
+			self.messaging.voice_message_starting = false;
+			self.messaging.voice_message_recording = false;
+			self.messaging.voice_message_encoding = false;
+			self.messaging.voice_message_ready_secs = None;
+			self.messaging.voice_message_elapsed_secs = 0;
+			self.messaging.voice_message_status =
+				"Voice recording discarded after conversation changed";
+		}
+		let mut finished = None;
+		let mut disconnected = false;
+		if let Some(capture) = &mut self.voice_message_capture {
+			for _ in 0..4 {
+				match capture.try_event() {
+					Ok(Some(voice_message::Event::Recording(_))) => {
+						self.messaging.voice_message_starting = false;
+						self.messaging.voice_message_recording = true;
+						self.messaging.voice_message_status = "";
+					}
+					Ok(Some(voice_message::Event::Encoding)) => {
+						self.messaging.voice_message_starting = false;
+						self.messaging.voice_message_recording = false;
+						self.messaging.voice_message_encoding = true;
+						self.messaging.voice_message_status = "Preparing voice message…";
+					}
+					Ok(Some(voice_message::Event::Ready(result))) => {
+						finished = Some(result);
+						break;
+					}
+					Ok(None) => break,
+					Err(()) => {
+						disconnected = true;
+						break;
+					}
+				}
+			}
+			self.messaging.voice_message_elapsed_secs = capture.duration().as_secs();
+			if self.messaging.voice_message_starting
+				|| self.messaging.voice_message_recording
+				|| self.messaging.voice_message_encoding
+			{
+				ctx.request_repaint_after(Duration::from_millis(200));
+			}
+		}
+		if disconnected && finished.is_none() {
+			finished = Some(Err("Voice recording stopped unexpectedly"));
+		}
+		if let Some(result) = finished {
+			self.voice_message_capture = None;
+			self.messaging.voice_message_starting = false;
+			self.messaging.voice_message_recording = false;
+			self.messaging.voice_message_encoding = false;
+			match result {
+				Ok(message) => {
+					self.messaging.voice_message_elapsed_secs = message.duration_secs.ceil() as u64;
+					self.messaging.voice_message_ready_secs =
+						Some(message.duration_secs.ceil() as u64);
+					self.messaging.voice_message_status = "";
+					self.voice_message_ready = Some(message);
+				}
+				Err(error) => {
+					self.voice_message_scope = None;
+					self.messaging.voice_message_elapsed_secs = 0;
+					self.messaging.voice_message_ready_secs = None;
+					self.messaging.voice_message_status = error;
+				}
+			}
+		}
+	}
+	fn sync_voice_message_requests(&mut self, ctx: &egui::Context) -> Option<Command> {
+		if std::mem::take(&mut self.messaging.voice_message_cancel_requested) {
+			if self.messaging.voice_message_restored {
+				self.uploads.remove();
+				self.pending_voice_metadata = None;
+			}
+			if let Some(capture) = self.voice_message_capture.take() {
+				capture.cancel();
+			}
+			self.voice_message_ready = None;
+			self.voice_message_scope = None;
+			self.messaging.voice_message_starting = false;
+			self.messaging.voice_message_recording = false;
+			self.messaging.voice_message_encoding = false;
+			self.messaging.voice_message_restored = false;
+			self.messaging.voice_message_ready_secs = None;
+			self.messaging.voice_message_elapsed_secs = 0;
+			self.messaging.voice_message_status = "";
+		}
+		if std::mem::take(&mut self.messaging.voice_message_start_requested) {
+			self.pending_voice_metadata = None;
+			self.messaging.voice_message_restored = false;
+			let scope = self
+				.state
+				.selected
+				.map(|channel| (self.state.generation, channel));
+			let allowed = scope.is_some()
+				&& !self.fixture_only
+				&& !self.state.demo
+				&& self.state.auth == AuthState::Authenticated
+				&& self.state.gateway_connected
+				&& self.state.voice.active.is_none()
+				&& scope.is_some_and(|(_, channel)| {
+					self.state.can_send(channel)
+						&& self.state.can_attach(channel)
+						&& self.state.reply.is_none()
+						&& self.state.drafts.get(&channel).is_none_or(String::is_empty)
+				}) && self.connection.is_some()
+				&& !self.uploads.busy()
+				&& !self.messaging.attach_busy
+				&& self.uploads.selection().is_none();
+			if !allowed {
+				self.messaging.voice_message_status = "Voice messages need an empty, connected conversation without a reply or attachment";
+			} else if let Some((generation, channel)) = scope {
+				match voice_message::Capture::start(self.messaging.voice_input.clone(), ctx.clone())
+				{
+					Ok(capture) => {
+						self.voice_message_capture = Some(capture);
+						self.voice_message_scope = Some((generation, channel));
+						self.voice_message_ready = None;
+						self.messaging.voice_message_starting = true;
+						self.messaging.voice_message_recording = false;
+						self.messaging.voice_message_encoding = false;
+						self.messaging.voice_message_ready_secs = None;
+						self.messaging.voice_message_elapsed_secs = 0;
+						self.messaging.voice_message_status = "Opening microphone…";
+						ctx.request_repaint_after(Duration::from_millis(100));
+					}
+					Err(error) => self.messaging.voice_message_status = error,
+				}
+			}
+		}
+		if std::mem::take(&mut self.messaging.voice_message_stop_requested)
+			&& let Some(capture) = &self.voice_message_capture
+		{
+			capture.stop();
+			self.messaging.voice_message_starting = false;
+			self.messaging.voice_message_recording = false;
+			self.messaging.voice_message_encoding = true;
+			self.messaging.voice_message_status = "Preparing voice message…";
+			ctx.request_repaint_after(Duration::from_millis(100));
+		}
+		if std::mem::take(&mut self.messaging.voice_message_send_requested) {
+			if self.messaging.voice_message_restored {
+				let restored =
+					self.pending_voice_metadata
+						.as_ref()
+						.is_some_and(|(generation, channel, _)| {
+							*generation == self.state.generation
+								&& self.state.selected == Some(*channel)
+								&& self.state.can_send(*channel)
+								&& self.state.can_attach(*channel)
+								&& self.state.reply.is_none()
+								&& !self.uploads.busy() && self
+								.uploads
+								.selection()
+								.is_some_and(|(name, _)| name == "voice-message.ogg")
+						});
+				if restored
+					&& let Some(command) = self
+						.state
+						.prepare_send_with_attachments(&["voice-message.ogg"])
+				{
+					self.messaging.voice_message_restored = false;
+					self.messaging.voice_message_ready_secs = None;
+					self.messaging.voice_message_status = "";
+					return Some(command);
+				}
+				self.messaging.voice_message_status =
+					"The restored recording is unavailable; select it again before retrying";
+				return None;
+			}
+			let Some(message) = self.voice_message_ready.take() else {
+				self.messaging.voice_message_status = "Record a voice message before sending";
+				return None;
+			};
+			let Some((generation, channel)) = self.voice_message_scope else {
+				self.voice_message_ready = Some(message);
+				self.messaging.voice_message_status =
+					"Open a conversation before sending this recording";
+				return None;
+			};
+			if generation != self.state.generation
+				|| self.state.selected != Some(channel)
+				|| !self.state.can_send(channel)
+				|| !self.state.can_attach(channel)
+				|| self.state.reply.is_some()
+				|| self.connection.is_none()
+				|| self.uploads.busy()
+			{
+				self.voice_message_ready = Some(message);
+				self.messaging.voice_message_status =
+					"Sending is unavailable here; keep the recording and try another conversation";
+				return None;
+			}
+			let source = match discord_api::upload::Source::recorded_voice(message.ogg.clone()) {
+				Ok(source) => source,
+				Err(error) => {
+					self.voice_message_ready = Some(message);
+					self.messaging.voice_message_status = error;
+					return None;
+				}
+			};
+			if let Err(error) = self.uploads.select_pasted(
+				generation,
+				channel,
+				vec![source],
+				self.runtime.handle(),
+				ctx,
+			) {
+				self.voice_message_ready = Some(message);
+				self.messaging.voice_message_status = error;
+				return None;
+			}
+			let Some(command) = self
+				.state
+				.prepare_send_with_attachments(&["voice-message.ogg"])
+			else {
+				self.uploads.remove();
+				self.voice_message_ready = Some(message);
+				self.messaging.voice_message_status =
+					"Could not prepare the voice message; try again";
+				return None;
+			};
+			self.pending_voice_metadata = Some((
+				generation,
+				channel,
+				discord_api::upload::VoiceMessageMetadata {
+					duration_secs: message.duration_secs,
+					waveform: message.waveform,
+				},
+			));
+			self.voice_message_scope = None;
+			self.messaging.voice_message_ready_secs = None;
+			self.messaging.voice_message_restored = false;
+			self.messaging.voice_message_status = "";
+			return Some(command);
+		}
+		None
+	}
 	fn poll(&mut self, ctx: &egui::Context) {
 		let mut cached = Vec::new();
 		let mut presence_cache_stopped = false;
@@ -4954,6 +5257,9 @@ impl Desktop {
 				}
 				cache::Outcome::StickerFavorites(favorites) => {
 					self.state.restore_sticker_favorites(favorites);
+				}
+				cache::Outcome::EmojiFavorites(favorites) => {
+					self.state.restore_emoji_favorites(favorites);
 				}
 				cache::Outcome::Drafts(drafts) => {
 					for (channel, content) in drafts {
@@ -5350,6 +5656,7 @@ impl Desktop {
 						self.queue_cache(cache::Operation::LoadDrafts);
 					self.queue_cache(cache::Operation::LoadGifFavorites);
 					self.queue_cache(cache::Operation::LoadStickerFavorites);
+					self.queue_cache(cache::Operation::LoadEmojiFavorites);
 				}
 				if !self.messaging.channel_preferences_loaded
 					&& !self.messaging.channel_preferences_load_pending
@@ -6046,6 +6353,7 @@ impl eframe::App for Desktop {
 		} else {
 			self.voice.stop();
 		}
+		self.poll_voice_message(ctx);
 		self.sync_tray(ctx);
 		if self.state.voice.active.is_some() {
 			// Speaking, notices, remote video, devices, hotkeys and deadlines each wake the UI
@@ -6442,6 +6750,10 @@ impl eframe::App for Desktop {
 				self.messaging.notification_sound_status = "Could not save device notification settings. Changes apply only until restart.";
 			}
 			let mut commands = self.messaging.show(ui, &mut self.state);
+			if let Some(command) = self.sync_voice_message_requests(&ctx) {
+				commands.push(command);
+			}
+			name_fonts::load_requested(&self.runtime, &ctx);
 			self.extensions.cancel_stale_message_events(&self.state);
 			self.choose_interaction_files(&ctx);
 			if let Some(command) = self.captcha.sync(
@@ -6603,7 +6915,18 @@ impl eframe::App for Desktop {
 				}
 			}
 			if let Some(index) = self.messaging.remove_attachment_index.take() {
+				let removed_voice = self.messaging.voice_message_restored
+					&& self
+						.messaging
+						.attachment_files
+						.get(index)
+						.is_some_and(|(name, _)| name == "voice-message.ogg");
 				self.uploads.remove_at(index);
+				if removed_voice {
+					self.messaging.voice_message_restored = false;
+					self.messaging.voice_message_ready_secs = None;
+					self.pending_voice_metadata = None;
+				}
 				if self.state.demo {
 					self.messaging.attachment = None;
 					self.messaging.attachment_files.clear();
@@ -6612,6 +6935,11 @@ impl eframe::App for Desktop {
 			}
 			if std::mem::take(&mut self.messaging.remove_attachment_requested) {
 				self.uploads.remove();
+				if self.messaging.voice_message_restored {
+					self.messaging.voice_message_restored = false;
+					self.messaging.voice_message_ready_secs = None;
+					self.pending_voice_metadata = None;
+				}
 				self.messaging.attachment = None;
 				self.messaging.attachment_files.clear();
 				self.messaging.attachment_previews.clear();
@@ -6652,7 +6980,13 @@ impl eframe::App for Desktop {
 							self.runtime.handle(),
 							&ctx,
 						) {
-							Ok(()) => {
+							Ok(voice) => {
+								self.messaging.voice_message_restored = voice.is_some();
+								self.messaging.voice_message_ready_secs = voice
+									.as_ref()
+									.map(|metadata| metadata.duration_secs.ceil() as u64);
+								self.pending_voice_metadata = voice
+									.map(|metadata| (self.state.generation, channel, metadata));
 								self.messaging.restore_pending_for_retry(
 									&mut self.state,
 									channel,
@@ -7031,6 +7365,10 @@ impl eframe::App for Desktop {
 		if std::mem::take(&mut self.state.stickers.favorites_changed) {
 			let favorites = self.state.stickers.favorites.clone();
 			self.queue_cache(cache::Operation::SaveStickerFavorites(favorites));
+		}
+		if std::mem::take(&mut self.state.emoji_favorites.changed) {
+			let favorites = self.state.emoji_favorites.items.clone();
+			self.queue_cache(cache::Operation::SaveEmojiFavorites(favorites));
 		}
 		if !self.fixture_only
 			&& !self.state.demo

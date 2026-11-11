@@ -12,6 +12,23 @@ Voice is included in every build without a feature flag. Source builds require C
 
 ## Implemented behavior and limits
 
+### Outgoing voice messages (November 10, 2026)
+
+An explicit composer microphone button records up to two minutes from the selected input device.
+Capture and Ogg/Opus encoding run on a bounded worker; samples stay in memory and are discarded
+when canceled, after sending, or when the conversation changes. Stop produces a ready state
+with duration and a separate Send action. Sending uses Evita's existing staged attachment path,
+then adds `IS_VOICE_MESSAGE` (8192), `duration_secs` and a base64 waveform. A definite send failure
+can be restored to the composer and retried as a voice message; ambiguous delivery is not replayed.
+
+This is an **unofficial, unverified desktop protocol**. Discord's public message docs describe the
+flag and attachment metadata but state that client audio encoding details are implementation
+specific; the published description says mono 48 kHz, 32 kbps Opus in Ogg. Discord's Support page
+says its official desktop and web clients cannot send voice messages. Evita's local encoder and
+signed upload request are covered by synthetic tests only. No live microphone or Discord upload
+was run, and Discord may reject or change this flow. It is not a supported replacement for the
+official mobile client.
+
 Resizing the DM or group call stage keeps a conversation following the newest message
 anchored above its composer on every frame. Reading older messages retains the existing
 scroll position instead of forcing the conversation back to the newest message.

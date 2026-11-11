@@ -1,4 +1,6 @@
 use super::Staged;
+#[path = "../../../packaging/windows/package_layout.rs"]
+mod windows_package_layout;
 use std::{
 	collections::HashSet,
 	fs,
@@ -12,18 +14,6 @@ use std::{
 };
 const MAX_FILES: usize = 8192;
 const MAX_UNPACKED: u64 = 1024 * 1024 * 1024;
-const WINDOWS_FILES: &[&str] = &[
-	"evita.exe",
-	"README.md",
-	"LICENSE-MIT",
-	"LICENSE-APACHE",
-	"THIRD_PARTY_NOTICES.md",
-	"docs",
-	"licenses",
-	"source",
-	"install-notifications.ps1",
-	"setup.ps1",
-];
 
 pub(super) fn flatpak_session() -> bool {
 	static FLATPAK: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
@@ -593,6 +583,7 @@ pub(super) fn unpack(
 	fs::create_dir(&destination).map_err(|_| "Cannot create update staging storage.".to_owned())?;
 	let mut paths = HashSet::new();
 	let mut total = 0_u64;
+	let mut has_windows_import_alias = false;
 	for index in 0..archive.len() {
 		if cancel.load(Ordering::Relaxed) {
 			return Err("Update cancelled.".into());
@@ -633,11 +624,19 @@ pub(super) fn unpack(
 			.and_then(|p| p.as_os_str().to_str())
 			.ok_or("Invalid package path.")?;
 		if cfg!(target_os = "macos") {
-			if top != "Evita.app" && !WINDOWS_FILES.contains(&top) {
+			if top != "Evita.app" && !windows_package_layout::WINDOWS_FILES.contains(&top) {
 				return Err("The update contains unexpected package content.".into());
 			}
-		} else if !WINDOWS_FILES.contains(&top) {
-			return Err("The update contains unexpected package content.".into());
+		} else {
+			if !windows_package_layout::is_windows_package_file(top) {
+				return Err("The update contains unexpected package content.".into());
+			}
+			if windows_package_layout::is_self_import_alias(top) {
+				if entry.is_dir() || has_windows_import_alias {
+					return Err("The update contains an invalid executable import alias.".into());
+				}
+				has_windows_import_alias = true;
+			}
 		}
 		let target = destination.join(&path);
 		if entry.is_dir() {
@@ -843,10 +842,11 @@ pub(super) fn prepare_restart(
 		let script = directory.join("install.ps1");
 		fs::write(&script, WINDOWS_HELPER)
 			.map_err(|_| "Cannot prepare the update helper.".to_owned())?;
+		let files = windows_package_layout::windows_package_files(&directory.join("package"))?;
 		let plan = serde_json::json!({
 			"installation": installation,
 			"parent": std::process::id(),
-			"files": WINDOWS_FILES,
+			"files": files,
 			"marker": marker,
 			"version": version,
 		});

@@ -23,14 +23,33 @@ case "$ID:${VERSION_ID:-rolling}" in
   opensuse-tumbleweed:*)
     # The rolling container can be newer than its repository mirror. Align the
     # disposable builder with the refreshed snapshot, including required downgrades.
-    zypper --non-interactive refresh
-    zypper --non-interactive dist-upgrade --allow-downgrade --no-recommends
-    zypper --non-interactive install --no-recommends gcc gcc-c++ make cmake \
-      pkg-config curl ca-certificates git tar gzip xz python3 coreutils shadow file \
-      rpm-build cpio desktop-file-utils gtk4-devel 'pkgconfig(webkitgtk-6.0)' \
-      fontconfig-devel libxkbcommon-devel libxkbcommon-x11-devel wayland-devel \
-      libX11-devel libXi-devel libXrandr-devel libXcursor-devel vulkan-devel \
-      alsa-devel libpulse-devel gstreamer-devel gstreamer-plugins-base-devel
+    # Tumbleweed mirrors can briefly publish metadata before all RPMs are available.
+    attempt=1
+    while :; do
+      if zypper --non-interactive refresh --force &&
+        zypper --non-interactive dist-upgrade --allow-downgrade --no-recommends &&
+        zypper --non-interactive install --no-recommends gcc gcc-c++ make cmake \
+          pkg-config curl ca-certificates git tar gzip xz python3 coreutils shadow file \
+          rpm-build cpio desktop-file-utils gtk4-devel 'pkgconfig(webkitgtk-6.0)' \
+          fontconfig-devel libxkbcommon-devel libxkbcommon-x11-devel wayland-devel \
+          libX11-devel libXi-devel libXrandr-devel libXcursor-devel vulkan-devel \
+          alsa-devel libpulse-devel gstreamer-devel gstreamer-plugins-base-devel; then
+        break
+      else
+        status=$?
+      fi
+
+      if [ "$attempt" -ge 3 ]; then
+        printf '%s\n' "openSUSE dependency setup failed after $attempt attempts." >&2
+        exit "$status"
+      fi
+
+      delay=$((attempt * 15))
+      printf 'openSUSE dependency setup failed (attempt %s/3); refreshing metadata and retrying in %s seconds.\n' \
+        "$attempt" "$delay" >&2
+      sleep "$delay"
+      attempt=$((attempt + 1))
+    done
     ;;
   arch:*)
     pacman -Syu --noconfirm --needed base-devel cmake pkgconf curl ca-certificates \

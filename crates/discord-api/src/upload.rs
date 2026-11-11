@@ -91,6 +91,20 @@ impl Source {
 			bytes: Some(text.into_bytes().into()),
 		})
 	}
+	/// Encoded Ogg/Opus data captured by Evita's explicit microphone recorder.
+	pub fn recorded_voice(bytes: Vec<u8>) -> Result<Self, &'static str> {
+		if bytes.len() < 64 || bytes.len() > 2 * 1024 * 1024 || !bytes.starts_with(b"OggS") {
+			return Err("Voice recording is empty, oversized or not an Ogg file");
+		}
+		let size = bytes.len() as u64;
+		Ok(Self {
+			path: PathBuf::new(),
+			bytes: Some(bytes.into()),
+			filename: "voice-message.ogg".into(),
+			size,
+			modified: SystemTime::UNIX_EPOCH,
+		})
+	}
 	/// Public artwork already decoded and validated by the host image worker.
 	pub fn image_bytes(filename: String, bytes: Vec<u8>) -> Result<Self, &'static str> {
 		let valid_name = filename
@@ -174,6 +188,59 @@ pub enum Status {
 	Failed(&'static str),
 }
 
+/// Voice-message-only attachment metadata. This wire feature is unofficial for desktop clients.
+#[derive(Clone)]
+pub struct VoiceMessageMetadata {
+	pub duration_secs: f64,
+	pub waveform: String,
+}
+
+impl VoiceMessageMetadata {
+	fn valid(&self) -> bool {
+		self.duration_secs.is_finite()
+			&& (0.2..=120.0).contains(&self.duration_secs)
+			&& !self.waveform.is_empty()
+			&& self.waveform.len() <= 344
+			&& waveform_bytes(&self.waveform).is_some_and(|bytes| (1..=256).contains(&bytes))
+	}
+}
+
+fn base64_value(byte: u8) -> Option<u8> {
+	match byte {
+		b'A'..=b'Z' => Some(byte - b'A'),
+		b'a'..=b'z' => Some(byte - b'a' + 26),
+		b'0'..=b'9' => Some(byte - b'0' + 52),
+		b'+' => Some(62),
+		b'/' => Some(63),
+		_ => None,
+	}
+}
+
+/// Validate canonical padded standard Base64 and return its decoded byte count without allocation.
+fn waveform_bytes(value: &str) -> Option<usize> {
+	let bytes = value.as_bytes();
+	if bytes.is_empty() || !bytes.len().is_multiple_of(4) {
+		return None;
+	}
+	for (index, chunk) in bytes.as_chunks::<4>().0.iter().enumerate() {
+		let final_chunk = index + 1 == bytes.len() / 4;
+		base64_value(chunk[0])?;
+		let second = base64_value(chunk[1])?;
+		match (chunk[2], chunk[3]) {
+			(b'=', b'=') if final_chunk && second & 0x0f == 0 => {}
+			(b'=', _) => return None,
+			(_, b'=') if final_chunk && base64_value(chunk[2])? & 0x03 == 0 => {}
+			(_, b'=') => return None,
+			(c, d) => {
+				base64_value(c)?;
+				base64_value(d)?;
+			}
+		}
+	}
+	let padding = bytes.ends_with(b"==") as usize + bytes.ends_with(b"=") as usize;
+	Some(bytes.len() / 4 * 3 - padding)
+}
+
 #[derive(serde::Deserialize)]
 struct UploadResponse {
 	attachments: Vec<Target>,
@@ -247,6 +314,30 @@ impl DiscordApi {
 		command: Command,
 		sources: Vec<Source>,
 		progress: watch::Sender<Status>,
+		cancel: watch::Receiver<bool>,
+	) -> Event {
+		self.upload_messages_with_voice(command, sources, None, progress, cancel)
+			.await
+	}
+
+	pub async fn upload_voice_message(
+		&self,
+		command: Command,
+		source: Source,
+		metadata: VoiceMessageMetadata,
+		progress: watch::Sender<Status>,
+		cancel: watch::Receiver<bool>,
+	) -> Event {
+		self.upload_messages_with_voice(command, vec![source], Some(metadata), progress, cancel)
+			.await
+	}
+
+	async fn upload_messages_with_voice(
+		&self,
+		command: Command,
+		sources: Vec<Source>,
+		voice: Option<VoiceMessageMetadata>,
+		progress: watch::Sender<Status>,
 		mut cancel: watch::Receiver<bool>,
 	) -> Event {
 		let (channel, content, target) = match command {
@@ -302,6 +393,17 @@ impl DiscordApi {
 				return Event::Failure(Failure::ProtocolAt("Invalid upload request"));
 			}
 		};
+		if voice.as_ref().is_some_and(|metadata| !metadata.valid())
+			|| voice.is_some()
+				&& (!content.is_empty()
+					|| sources.len() != 1
+					|| sources[0].filename() != "voice-message.ogg"
+					|| !matches!(&target, Destination::Send { reply: None, .. }))
+		{
+			let failure = Failure::ProtocolAt("Invalid voice message; record it again");
+			progress.send_replace(Status::Failed(failure.label()));
+			return target.failed(channel, failure);
+		}
 		if content.chars().count() > client_core::MAX_PREMIUM_CONTENT {
 			let failure = Failure::ProtocolAt("Message is too long; no file was uploaded");
 			progress.send_replace(Status::Failed(failure.label()));
@@ -372,7 +474,14 @@ impl DiscordApi {
 				let result = tokio::select! {
 					biased;
 					_ = cancelled(&mut cancel) => Err(Failure::Ambiguous),
-					result = self.send_message(channel, &content, &nonce, reply, Some(attachment), None) => result,
+					result = async {
+						if let Some(metadata) = voice {
+							let attachment = attachment.into_iter().next().ok_or(Failure::Protocol)?;
+						self.send_voice_message(channel, &nonce, attachment, metadata).await
+						} else {
+						self.send_message(channel, &content, &nonce, reply, Some(attachment), None).await
+						}
+					} => result,
 				};
 				progress.send_replace(status(&result));
 				Event::SendResult { nonce, result }
@@ -588,6 +697,38 @@ impl DiscordApi {
 				}));
 		if allowed { Ok(url) } else { Err(invalid) }
 	}
+
+	async fn send_voice_message(
+		&self,
+		channel: model::Id,
+		nonce: &str,
+		mut attachment: serde_json::Value,
+		metadata: VoiceMessageMetadata,
+	) -> Result<model::Message, Failure> {
+		attachment["filename"] = serde_json::json!("voice-message.ogg");
+		attachment["duration_secs"] = serde_json::json!(metadata.duration_secs);
+		attachment["waveform"] = serde_json::json!(metadata.waveform);
+		let body = serde_json::json!({
+			"content":"",
+			"nonce":nonce,
+			"allowed_mentions":{"parse":[]},
+			"flags":8192,
+			"attachments":[attachment]
+		});
+		let bytes = self
+			.request_limited(
+				Method::POST,
+				&format!("/channels/{channel}/messages"),
+				Some(body),
+				MAX_RESPONSE,
+			)
+			.await?;
+		let message = crate::decode::<crate::MessageDto>(&bytes).map_err(|_| Failure::Ambiguous)?;
+		if message.channel_id != channel {
+			return Err(Failure::Ambiguous);
+		}
+		Ok(message.into_model())
+	}
 }
 
 /// MIME type the official client declares on the storage PUT, from the filename extension.
@@ -703,6 +844,15 @@ mod tests {
 			content: String::new(),
 			nonce: "synthetic-upload".into(),
 			reply: Some(Reply::to(model::Id(2))),
+		}
+	}
+	fn voice_command() -> Command {
+		Command::Send {
+			sticker: None,
+			channel: model::Id(1),
+			content: String::new(),
+			nonce: "synthetic-upload".into(),
+			reply: None,
 		}
 	}
 	async fn request(socket: &mut TcpStream) -> (String, Vec<u8>) {
@@ -844,6 +994,108 @@ mod tests {
 			] {
 				assert!(api.upload_url(&url).is_err());
 			}
+		}
+	}
+
+	#[tokio::test]
+	async fn voice_message_uses_the_signed_upload_then_the_voice_flagged_message_payload() {
+		tokio::time::timeout(Duration::from_secs(10), async {
+			let bytes = [b"OggS".as_slice(), &[0; 60]].concat();
+			let source = Source::recorded_voice(bytes.clone()).unwrap();
+			let api_listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+			let storage = TcpListener::bind("127.0.0.1:0").await.unwrap();
+			let storage_address = storage.local_addr().unwrap();
+			let mut api = api();
+			api.base = format!("http://{}", api_listener.local_addr().unwrap());
+			api.upload_origin = Some(storage_address);
+			let upload_url = format!("http://{storage_address}/signed?upload_id=synthetic");
+			let server = tokio::spawn(async move {
+				let (mut socket, _) = api_listener.accept().await.unwrap();
+				let (head, body) = request(&mut socket).await;
+				assert!(head.starts_with("POST /channels/1/attachments HTTP/1.1"));
+				assert_eq!(
+					serde_json::from_slice::<serde_json::Value>(&body).unwrap(),
+					serde_json::json!({"files":[{"id":"0","filename":"voice-message.ogg","file_size":64,"is_clip":false}]})
+				);
+				respond(
+					&mut socket,
+					"200 OK",
+					&serde_json::json!({"attachments":[{"id":"0","upload_url":upload_url,"upload_filename":"synthetic/voice-message"}]}).to_string(),
+				)
+				.await;
+
+				let (mut socket, _) = storage.accept().await.unwrap();
+				let (head, uploaded) = request(&mut socket).await;
+				assert!(head.starts_with("PUT /signed?upload_id=synthetic HTTP/1.1"));
+				assert!(head.to_ascii_lowercase().contains("content-type: audio/ogg"));
+				assert_eq!(uploaded, bytes);
+				respond(&mut socket, "200 OK", "").await;
+
+				let (mut socket, _) = api_listener.accept().await.unwrap();
+				let (head, body) = request(&mut socket).await;
+				assert!(head.starts_with("POST /channels/1/messages HTTP/1.1"));
+				let body: serde_json::Value = serde_json::from_slice(&body).unwrap();
+				assert_eq!(body["content"], "");
+				assert_eq!(body["nonce"], "synthetic-upload");
+				assert_eq!(body["flags"], 8192);
+				assert_eq!(
+					body["attachments"],
+					serde_json::json!([{
+						"id":"0",
+						"filename":"voice-message.ogg",
+						"uploaded_filename":"synthetic/voice-message",
+						"duration_secs":0.25,
+						"waveform":"AQID"
+					}])
+				);
+				respond(&mut socket, "200 OK", r#"{"id":"3","channel_id":"1","author":{"id":"4","username":"Synthetic"},"nonce":"synthetic-upload"}"#).await;
+			});
+			let (progress, status) = watch::channel(Status::Preparing);
+			let (_cancel, cancelled) = watch::channel(false);
+			let metadata = VoiceMessageMetadata {
+				duration_secs: 0.25,
+				waveform: "AQID".into(),
+			};
+			assert!(matches!(
+				api.upload_voice_message(voice_command(), source, metadata, progress, cancelled).await,
+				Event::SendResult { result: Ok(message), .. } if message.id == model::Id(3)
+			));
+			assert_eq!(*status.borrow(), Status::Finished);
+			server.await.unwrap();
+		})
+		.await
+		.unwrap();
+	}
+
+	#[test]
+	fn voice_metadata_and_recording_sources_stay_bounded() {
+		assert_eq!(waveform_bytes("AQ=="), Some(1));
+		assert_eq!(waveform_bytes("AQJ="), None);
+		assert_eq!(waveform_bytes("AQID"), Some(3));
+		assert_eq!(waveform_bytes("AR=="), None);
+		assert_eq!(waveform_bytes("AQI="), Some(2));
+		let metadata = VoiceMessageMetadata {
+			duration_secs: 0.25,
+			waveform: "AQID".into(),
+		};
+		assert!(metadata.valid());
+		assert!(Source::recorded_voice([b"OggS".as_slice(), &[0; 60]].concat()).is_ok());
+		assert!(Source::recorded_voice(vec![0; 64]).is_err());
+		assert!(Source::recorded_voice(vec![0; 2 * 1024 * 1024 + 1]).is_err());
+		for (duration_secs, waveform) in [
+			(0.19, "AQID"),
+			(120.01, "AQID"),
+			(f64::NAN, "AQID"),
+			(1.0, "!"),
+			(1.0, ""),
+		] {
+			assert!(
+				!VoiceMessageMetadata {
+					duration_secs,
+					waveform: waveform.into(),
+				}
+				.valid()
+			);
 		}
 	}
 

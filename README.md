@@ -21,7 +21,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/tsukumivi/Evita/raw/main/dist-installer/evita-0.1.0-setup.exe"><img src="https://img.shields.io/badge/download-Windows%20installer-7c3aed.svg" alt="Download Evita for Windows" /></a>
+  <a href="https://github.com/tsukumivi/Evita/releases/latest"><img src="https://img.shields.io/badge/download-latest%20release-7c3aed.svg" alt="Download Evita" /></a>
   <a href="Cargo.toml"><img src="https://img.shields.io/badge/rust-1.98.1_pinned-blue.svg?logo=rust" alt="Rust 1.98.1 Pinned" /></a>
   <a href="crates/ui"><img src="https://img.shields.io/badge/ui-egui%20%2F%20wgpu-orange.svg" alt="UI egui/wgpu" /></a>
   <a href="docs/platform-support.md"><img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-informational.svg" alt="Platform Support" /></a>
@@ -38,12 +38,12 @@
 
 ## Downloads & Installation
 
-Evita's Windows installer is available below. Automatic updates are not configured yet.
+Evita's current installers are available on the [latest GitHub release](https://github.com/tsukumivi/Evita/releases/latest). In-app automatic updates are not configured yet; to update, download and run the newer release installer.
 
 ### Install on Windows
 
-1. [Download the Evita Windows installer (.exe)](https://github.com/tsukumivi/Evita/raw/main/dist-installer/evita-0.1.0-setup.exe) (about 51 MB).
-2. Open `evita-0.1.0-setup.exe` from your Downloads folder and follow the setup prompts.
+1. Open the [latest release](https://github.com/tsukumivi/Evita/releases/latest) and download `Windows-X64-Setup.exe` for Intel/AMD Windows, or `Windows-ARM64-Setup.exe` for Windows on ARM.
+2. Run the downloaded installer and follow the setup prompts.
 3. Evita installs for your Windows user; administrator access is not required.
 
 The installer is not code-signed, so Windows may show a security warning.
@@ -56,7 +56,7 @@ To rebuild the installer, install Rust 1.98.1 with the MSVC toolchain, Visual St
 cargo xtask package
 ```
 
-The build places the Windows app and its required runtime files in `dist/` and, when `makensis` is available, creates `dist-installer/evita-0.1.0-setup.exe`. Run that setup file to install Evita for the current Windows user without administrator access. For a portable copy, keep the full `dist/` folder together so `WebView2Loader.dll` and any toolchain import alias remain beside `evita.exe`.
+The build places the Windows app and its required runtime files in `dist/` and, when `makensis` is available, creates a versioned setup file in `dist-installer/` (for example, `evita-<version>-setup.exe`). Run that setup file to install Evita for the current Windows user without administrator access. For a portable copy, keep the full `dist/` folder together so `WebView2Loader.dll` and any toolchain import alias remain beside `evita.exe`.
 
 For a development launch, use `cargo run --locked`. The demo command uses only synthetic data: `cargo run --locked --features demo -- --demo`.
 
@@ -72,7 +72,7 @@ Evita also includes the 11 named palettes from [Yozora's Appearance picker](http
 
 ### Other platforms
 
-Only the Windows installer is currently available. macOS and Linux package definitions are present for future development, but Evita has not yet been built or published for those platforms.
+macOS and Linux downloads are also available on the [latest GitHub release](https://github.com/tsukumivi/Evita/releases/latest). The current release includes a macOS ARM64 archive and Linux packages for AppImage, Flatpak, Arch, Ubuntu/Debian, Fedora, and openSUSE.
 
 ---
 

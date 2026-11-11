@@ -12,6 +12,32 @@ pub(super) fn name(
 	sense: Sense,
 	trailing: f32,
 ) -> Response {
+	name_with_mode(ui, user, name, size, color, sense, trailing, false)
+}
+
+pub(super) fn server_member_name(
+	ui: &mut Ui,
+	user: &User,
+	name: &str,
+	size: f32,
+	color: (Color32, Option<model::server_roles::Colors>, Color32),
+	sense: Sense,
+	trailing: f32,
+) -> Response {
+	name_with_mode(ui, user, name, size, color, sense, trailing, true)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn name_with_mode(
+	ui: &mut Ui,
+	user: &User,
+	name: &str,
+	size: f32,
+	color: (Color32, Option<model::server_roles::Colors>, Color32),
+	sense: Sense,
+	trailing: f32,
+	server_member: bool,
+) -> Response {
 	let colors = design::palette(ui);
 	let account_label = user.account_label();
 	let verified = user.kind == model::AccountKind::VerifiedBot;
@@ -31,21 +57,21 @@ pub(super) fn name(
 		text.size().x + 8.0 + if verified { 10.0 } else { 0.0 } + ui.spacing().item_spacing.x
 	});
 	let width = (ui.available_width() - reserve - trailing).max(0.0);
-	// A Nitro name style, when switched on, replaces the role colour like Discord's.
+	// In DMs/messages, a Nitro style replaces the role color; server rows use role colors instead.
 	let response = ui
 		.scope(|ui| {
 			ui.set_max_width(width);
-			crate::name_styles::label(
-				ui,
-				crate::name_styles::style(user),
-				name,
-				egui::FontId::new(size, design::medium_family(ui.ctx())),
-				color.1,
-				color.2,
-				color.0,
-				sense,
-				false,
-			)
+			let style = crate::name_styles::style(user);
+			let font = egui::FontId::new(size, design::medium_family(ui.ctx()));
+			if server_member {
+				crate::name_styles::server_member_label(
+					ui, style, name, font, color.1, color.2, color.0, sense,
+				)
+			} else {
+				crate::name_styles::label(
+					ui, style, name, font, color.1, color.2, color.0, sense, false,
+				)
+			}
 		})
 		.inner;
 	if let Some(text) = badge {
