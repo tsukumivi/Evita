@@ -42,7 +42,7 @@ fn scroll_settings_to_bottom(
 	view: &mut MessagingUi,
 	state: &mut client_core::State,
 ) -> Vec<(String, egui::Pos2)> {
-	let pointer = egui::pos2(700.0, 380.0);
+	let pointer = egui::pos2(700.0, ctx.content_rect().center().y);
 	let mut texts = Vec::new();
 	for _ in 0..8 {
 		texts = frame(
