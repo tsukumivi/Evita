@@ -1680,7 +1680,7 @@ fn card(
 			|ui| {
 				let response = ui.response();
 				design::interactive_card_frame(ui, &response)
-					.inner_margin(egui::Margin::symmetric(16, 14))
+					.inner_margin(egui::Margin::symmetric(16, 10))
 					.show(ui, |ui| {
 						ui.set_width(ui.available_width());
 						let preview = state.post_preview(post.id);
@@ -1691,7 +1691,7 @@ fn card(
 								ui.available_width() - preview.map_or(0.0, |_| PREVIEW + 12.0);
 							ui.vertical(|ui| {
 								ui.set_width(width.max(120.0));
-								ui.spacing_mut().item_spacing.y = 6.0;
+								ui.spacing_mut().item_spacing.y = 4.0;
 								if !tags.is_empty() {
 									card_tags(ui, (images, state.demo), &tags, CARD_TAGS);
 								}
