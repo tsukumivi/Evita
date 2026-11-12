@@ -1209,6 +1209,16 @@ impl MessagingUi {
 									egui::Layout::left_to_right(egui::Align::Center),
 									|ui| {
 										ui.spacing_mut().item_spacing.x = 5.0;
+										if channel.nsfw == Some(true) {
+											ui.label(
+												RichText::new(crate::i18n::translate_if_key(
+													"channel-nsfw-label",
+												))
+												.size(10.0)
+												.strong()
+												.color(ui.visuals().weak_text_color()),
+											);
+										}
 										if let Some(user) = direct_user {
 											let server_tag = user.primary_guild.as_deref();
 											let trailing =
@@ -1922,6 +1932,7 @@ mod tests {
 			position,
 			name: format!("Synthetic {id}"),
 			kind,
+			nsfw: None,
 			recipients: vec![],
 			member_list_id: None,
 			tags: None,

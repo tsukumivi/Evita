@@ -317,6 +317,7 @@ mod tests {
 			kind,
 			position: 0,
 			name: format!("Thread {}", id.0),
+			nsfw: None,
 			recipients: vec![],
 			last_message: None,
 			member_list_id: None,

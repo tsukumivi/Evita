@@ -35,6 +35,7 @@ fn ready() -> Event {
 				guild: Some(Id(10)),
 				parent_id: None,
 				kind: 0,
+				nsfw: None,
 				name: "Synthetic".into(),
 				icon: None,
 				position: 0,

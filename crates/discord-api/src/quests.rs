@@ -74,12 +74,13 @@ pub(super) fn parse(bytes: &[u8]) -> Result<Vec<Quest>, Failure> {
 		let image = (image.starts_with("https://cdn.discordapp.com/")
 			|| image.starts_with("https://media.discordapp.net/"))
 		.then_some(image);
-		let progress = quest_progress(row, config);
+		let (progress, progress_percent) = quest_progress(row, config);
 		let quest = Quest {
 			id,
 			title,
 			description,
 			progress,
+			progress_percent,
 			image,
 		};
 		if quest.valid() {
@@ -89,9 +90,9 @@ pub(super) fn parse(bytes: &[u8]) -> Result<Vec<Quest>, Failure> {
 	Ok(quests)
 }
 
-fn quest_progress(row: &Value, config: &Value) -> String {
+fn quest_progress(row: &Value, config: &Value) -> (String, Option<u8>) {
 	let Some(progress) = field(row, &["user_status", "progress"]).and_then(Value::as_object) else {
-		return "In progress".into();
+		return (String::new(), None);
 	};
 	for (task, status) in progress {
 		let current = status
@@ -106,10 +107,13 @@ fn quest_progress(row: &Value, config: &Value) -> String {
 			&& target > 0.0
 		{
 			let percent = (current / target * 100.0).clamp(0.0, 100.0).round() as u32;
-			return format!("{} / {} · {percent}%", current.round(), target.round());
+			return (
+				format!("{} / {} · {percent}%", current.round(), target.round()),
+				Some(percent as u8),
+			);
 		}
 	}
-	"In progress".into()
+	(String::new(), None)
 }
 
 #[cfg(test)]
@@ -125,12 +129,15 @@ mod tests {
 		assert_eq!(rows.len(), 2);
 		assert_eq!(rows[0].title, "Play a game");
 		assert_eq!(rows[0].progress, "5 / 20 · 25%");
+		assert_eq!(rows[0].progress_percent, Some(25));
 		assert_eq!(
 			rows[0].image.as_deref(),
 			Some("https://cdn.discordapp.com/quests/hero.png")
 		);
 		assert_eq!(rows[1].title, "A quest");
 		assert_eq!(rows[1].image, None);
+		assert!(rows[1].progress.is_empty());
+		assert_eq!(rows[1].progress_percent, None);
 		assert!(!rows.iter().any(|quest| quest.title == "Finished quest"));
 		assert!(parse(br#"{"user_quests":[{}]}"#).unwrap().is_empty());
 		assert!(parse(br#"{"user_quests":[]}"#).is_ok());

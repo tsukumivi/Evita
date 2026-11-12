@@ -83,7 +83,7 @@ pub enum Variant {
 	/// The house palette: neutral grey surfaces, following the light/dark preference.
 	#[default]
 	Standard = 0,
-	Yozora = 1,
+	NightSky = 1,
 	Uika = 2,
 	Pine = 3,
 	Kurisu = 4,
@@ -106,7 +106,7 @@ pub enum Variant {
 impl Variant {
 	pub const ALL: [Variant; 18] = [
 		Variant::Standard,
-		Variant::Yozora,
+		Variant::NightSky,
 		Variant::Uika,
 		Variant::Pine,
 		Variant::Kurisu,
@@ -127,7 +127,7 @@ impl Variant {
 	pub fn label(self) -> &'static str {
 		match self {
 			Variant::Standard => "Evita",
-			Variant::Yozora => "Night Sky",
+			Variant::NightSky => "Night Sky",
 			Variant::Uika => "Uika",
 			Variant::Pine => "Pine",
 			Variant::Kurisu => "Kurisu",
@@ -150,7 +150,7 @@ impl Variant {
 	pub fn key(self) -> &'static str {
 		match self {
 			Variant::Standard => "standard",
-			Variant::Yozora => "yozora",
+			Variant::NightSky => "night-sky",
 			Variant::Uika => "uika",
 			Variant::Pine => "pine",
 			Variant::Kurisu => "kurisu",
@@ -173,7 +173,7 @@ impl Variant {
 	fn legacy_key(self) -> &'static str {
 		match self {
 			Variant::Standard => "standard",
-			Variant::Yozora => "yozora",
+			Variant::NightSky => "yozora",
 			Variant::Uika => "uika",
 			Variant::Pine => "pine",
 			Variant::Kurisu => "kurisu",
@@ -208,7 +208,7 @@ impl Variant {
 	pub fn owns_accent(self) -> bool {
 		matches!(
 			self,
-			Variant::Yozora
+			Variant::NightSky
 				| Variant::Uika
 				| Variant::Pine
 				| Variant::Kurisu
@@ -221,10 +221,10 @@ impl Variant {
 				| Variant::AstraLight
 		)
 	}
-	/// Yozora palettes include a fixed light or dark mode, selected with the palette.
+	/// Named palettes include a fixed light or dark mode, selected with the palette.
 	pub fn appearance(self) -> Option<egui::ThemePreference> {
 		match self {
-			Variant::Yozora
+			Variant::NightSky
 			| Variant::Uika
 			| Variant::Pine
 			| Variant::Kurisu
@@ -419,11 +419,10 @@ fn gradient(stops: [u32; 2], border: u32) -> Palette {
 	p
 }
 
-/// A Yozora panel palette mapped onto Evita's window, sidebar, chat and raised surfaces.
-/// Theme data follows Yozora's published Appearance palette tokens; its UI-specific font and
-/// motion treatments are intentionally left to Evita's native controls.
+/// A community palette mapped onto Evita's window, sidebar, chat and raised surfaces.
+/// Its UI-specific font and motion treatments are intentionally left to Evita's native controls.
 #[allow(clippy::too_many_arguments)]
-fn yozora_palette(
+fn community_palette(
 	bg: u32,
 	panel: u32,
 	panel_2: u32,
@@ -473,7 +472,7 @@ fn yozora_palette(
 /// Resolve a built-in preset with the current accent, before extension overrides or surface blending.
 pub fn builtin_colors(dark: bool, variant: Variant) -> Palette {
 	let palette = match variant {
-		Variant::Yozora => yozora_palette(
+		Variant::NightSky => community_palette(
 			0x0f1117,
 			0x171a22,
 			0x1f232d,
@@ -492,7 +491,7 @@ pub fn builtin_colors(dark: bool, variant: Variant) -> Palette {
 			0xffaaa3,
 			0xe0b758,
 		),
-		Variant::Uika => yozora_palette(
+		Variant::Uika => community_palette(
 			0x0b0913,
 			0x14101c,
 			0x1a1424,
@@ -511,7 +510,7 @@ pub fn builtin_colors(dark: bool, variant: Variant) -> Palette {
 			0xd9737c,
 			0xe08d3c,
 		),
-		Variant::Pine => yozora_palette(
+		Variant::Pine => community_palette(
 			0x07100d,
 			0x0d1a15,
 			0x13241e,
@@ -530,7 +529,7 @@ pub fn builtin_colors(dark: bool, variant: Variant) -> Palette {
 			0xdd8173,
 			0xc6a15b,
 		),
-		Variant::Kurisu => yozora_palette(
+		Variant::Kurisu => community_palette(
 			0x0a0d08,
 			0x12180d,
 			0x171f11,
@@ -549,7 +548,7 @@ pub fn builtin_colors(dark: bool, variant: Variant) -> Palette {
 			0xff6b76,
 			0xf0b429,
 		),
-		Variant::Ava => yozora_palette(
+		Variant::Ava => community_palette(
 			0x070a14,
 			0x0d1424,
 			0x11192c,
@@ -568,7 +567,7 @@ pub fn builtin_colors(dark: bool, variant: Variant) -> Palette {
 			0xff8fa3,
 			0x00e5ff,
 		),
-		Variant::Astra => yozora_palette(
+		Variant::Astra => community_palette(
 			0x0e1014,
 			0x15181e,
 			0x1b1f26,
@@ -587,7 +586,7 @@ pub fn builtin_colors(dark: bool, variant: Variant) -> Palette {
 			0xf08a7e,
 			0xe0b060,
 		),
-		Variant::Mariyaholic98 => yozora_palette(
+		Variant::Mariyaholic98 => community_palette(
 			0x120c24,
 			0x22204a,
 			0x33407a,
@@ -606,7 +605,7 @@ pub fn builtin_colors(dark: bool, variant: Variant) -> Palette {
 			0xf08868,
 			0xf4cf8a,
 		),
-		Variant::Sumimi => yozora_palette(
+		Variant::Sumimi => community_palette(
 			0xf7f3ea,
 			0xfffdf8,
 			0xf6f1e6,
@@ -625,7 +624,7 @@ pub fn builtin_colors(dark: bool, variant: Variant) -> Palette {
 			0x9c3f47,
 			0x8a6a20,
 		),
-		Variant::Ledger => yozora_palette(
+		Variant::Ledger => community_palette(
 			0xfbf8f3,
 			0xf7f3ec,
 			0xf0eadf,
@@ -644,7 +643,7 @@ pub fn builtin_colors(dark: bool, variant: Variant) -> Palette {
 			0x9a3a33,
 			0x1f4d3f,
 		),
-		Variant::Confluence => yozora_palette(
+		Variant::Confluence => community_palette(
 			0xf3efe4,
 			0xe9e2d5,
 			0xded4c4,
@@ -663,7 +662,7 @@ pub fn builtin_colors(dark: bool, variant: Variant) -> Palette {
 			0x9c3f47,
 			0x94301f,
 		),
-		Variant::AstraLight => yozora_palette(
+		Variant::AstraLight => community_palette(
 			0xf3f2ee,
 			0xfbfaf7,
 			0xebe9e3,

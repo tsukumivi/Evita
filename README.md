@@ -50,23 +50,21 @@ The installer is not code-signed, so Windows may show a security warning.
 
 ### Build from source
 
-To rebuild the installer, install Rust 1.98.1 with the MSVC toolchain, Visual Studio C++ Build Tools, and NSIS, then run this command from the repository:
+To rebuild the installer, install Rust 1.98.1 with the MSVC toolchain, Visual Studio C++ Build Tools, Go 1.27.1 or newer, and NSIS, then run this command from the repository. Go builds the bundled Viviette companion from source:
 
 ```powershell
 cargo xtask package
 ```
 
-The build places the Windows app and its required runtime files in `dist/` and, when `makensis` is available, creates a versioned setup file in `dist-installer/` (for example, `evita-<version>-setup.exe`). Run that setup file to install Evita for the current Windows user without administrator access. For a portable copy, keep the full `dist/` folder together so `WebView2Loader.dll` and any toolchain import alias remain beside `evita.exe`.
+The build places Evita, Viviette and their required runtime and license files in `dist/` and, when `makensis` is available, creates a versioned setup file in `dist-installer/` (for example, `evita-<version>-setup.exe`). Run that setup file to install Evita for the current Windows user without administrator access. For a portable copy, keep the full `dist/` folder together so `WebView2Loader.dll`, Viviette and any toolchain import alias remain beside `evita.exe`.
 
 For a development launch, use `cargo run --locked`. The demo command uses only synthetic data: `cargo run --locked --features demo -- --demo`.
 
-### Using Evita with Yozora
+### Viviette companion
 
-[Yozora](https://github.com/mariyaholic/yozora), maintained by Maria, publishes music and video Rich Presence over the standard Discord local IPC protocol. Evita implements that protocol. Start Evita and sign in, then open **Settings → Registered Games** and enable **Share activity**. Close the official Discord client while using Yozora with Evita: Yozora connects to the first available Discord IPC pipe, so an already running official client would receive the presence instead. Start Yozora in the same Windows user session and choose the media sources you want in its control panel. Evita displays Yozora activity text, timestamps, and approved artwork. Evita filters external presence buttons and party actions. Local activity is accepted only while sharing is enabled and the account is connected; disabling sharing closes Evita's IPC listener.
+Windows packages include **Viviette**, a separate music and video Rich Presence companion. Open **Settings → Registered Games → Open Viviette**, then enable **Share activity** in Evita. Viviette runs in its own control panel and tray process; it is not embedded in Evita's chat window. Its activity reaches Evita through the local Rich Presence IPC interface, and Evita continues filtering external buttons and party actions. Use one Discord-compatible client at a time because Viviette connects to the first available local Discord IPC pipe. The companion's Discord application identity is still set by the upstream registration; Discord may display that registered app name until Evita has its own application ID.
 
-### Yozora appearance themes
-
-Evita also includes the 11 named palettes from [Yozora's Appearance picker](https://github.com/mariyaholic/yozora#appearance). Choose one under **Settings → Appearance → Color preset**. Night Sky, Uika, Pine, Kurisu, Ava, Astra, and Mariyaholic-98 use their dark palettes; Sumimi, Ledger, Confluence, and Astra Light use their light palettes. Choosing one selects its matching appearance mode and keeps its palette accent. Evita's existing presets remain available as well. The palette colors are adapted to Evita's native app surfaces; Yozora's browser-panel fonts and motion effects are specific to Yozora.
+Theme presets remain available under **Settings → Appearance → Color preset**. The former Night Sky preference key is retained as a compatibility alias so existing settings continue to load.
 
 ---
 
@@ -83,7 +81,7 @@ macOS and Linux downloads are also available on the [latest GitHub release](http
 - 🔒 **Secure OS Credential Storage:** Session tokens use your operating system's secure vault by default (macOS Keychain, Windows Credential Manager, or Linux Secret Service). Settings › Storage offers an explicit, unencrypted plaintext fallback when the keyring does not work.
 - 🛡️ **Ephemeral Authentication Webview:** Sign-in uses Discord's official hosted login page inside a temporary native webview (WKWebView, WebView2, or WebKitGTK) supporting email/password, QR login, and MFA. An origin-checked handoff secures the session credential and immediately terminates the webview.
 - 💾 **Bounded Local Persistence:** Recent chat history, drafts, image previews, settings, and diagnostics are stored in an account-isolated, bounded local SQLite database. All local data is strictly cleared upon explicit logout.
-- 🎙️ **Voice Calls, Video & Screen Sharing:** Complete native voice engine with 1-to-1 and group DM calls, server voice channels, push-to-talk, Sonora AEC3 acoustic echo cancellation, RNNoise noise suppression, Opus codec, and DAVE v1 end-to-end encryption. Includes native screen capture (macOS ScreenCaptureKit, Windows Graphics Capture, Linux portal/PipeWire with VA-API/NVENC hardware encoding and software fallback; Linux native capture remains unverified) and incoming stream & camera video playback with hardware-accelerated decoding (VideoToolbox, VA-API, DirectX).
+- 🎙️ **Voice Calls, Video & Screen Sharing:** Native voice engine with 1-to-1 and group DM calls, server voice channels, push-to-talk, Crystal-branded local RNNoise/WebRTC processing, Sonora AEC3 acoustic echo cancellation, Opus codec, and DAVE v1 end-to-end encryption. Includes native screen capture (macOS ScreenCaptureKit, Windows Graphics Capture, Linux portal/PipeWire with VA-API/NVENC hardware encoding and software fallback; Linux native capture remains unverified) and incoming stream & camera video playback with hardware-accelerated decoding (VideoToolbox, VA-API, DirectX).
 - 🧵 **Forum Channels & Active Threads:** Browse forum channels, view posts sorted by recent activity, read message threads with unread indicators, and create new forum posts directly in-app.
 - ⚙️ **Server Administration Suite:** Full server management interface including Server Profiles (banners, icons, traits, descriptions), custom sticker management, role editor with fine-grained permission matrix, paginated audit logs with action filters, invite manager with revocation, integrations and webhooks, and member moderation.
 - ✨ **GIF & Twemoji Picker:** Instant KLIPY GIF search with favorites and one-click sending, full Twemoji picker with search and quick-reactions, plus custom guild emojis.

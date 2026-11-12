@@ -38,6 +38,9 @@ enum Tab {
 }
 impl Friends {
 	fn matches(&self, state: &State, user: &model::User, query: &str) -> bool {
+		if self.tab != Tab::Restricted && state.user_ignored(user.id) == Some(true) {
+			return false;
+		}
 		if self.tab == Tab::Online {
 			let (status, _, _, _) = profiles::presence(state, user.id, None);
 			if !matches!(status, Some("online" | "idle" | "dnd")) {
@@ -974,7 +977,7 @@ fn header_tab(
 	response
 }
 
-/// Rounded search field with a trailing search glyph that becomes a clear button.
+/// Rounded search field with a leading search glyph and trailing clear button.
 fn search(ui: &mut egui::Ui, query: &mut String, id: egui::Id, hint: &str) -> egui::Response {
 	let colors = design::palette(ui);
 	let frame = egui::Frame::new()
@@ -983,6 +986,8 @@ fn search(ui: &mut egui::Ui, query: &mut String, id: egui::Id, hint: &str) -> eg
 		.inner_margin(egui::Margin::symmetric(12, 6))
 		.show(ui, |ui| {
 			ui.horizontal(|ui| {
+				ui.spacing_mut().item_spacing.x = 8.0;
+				icons::inline(ui, Icon::Search, 18.0, colors.muted);
 				let edit = ui.add(
 					egui::TextEdit::singleline(query)
 						.align(egui::Align2::LEFT_CENTER)
@@ -993,17 +998,18 @@ fn search(ui: &mut egui::Ui, query: &mut String, id: egui::Id, hint: &str) -> eg
 						.desired_width((ui.available_width() - 30.0).max(40.0)),
 				);
 				ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-					if query.is_empty() {
-						icons::inline(ui, Icon::Search, 18.0, colors.muted);
-					} else if icons::button(
-						ui,
-						Icon::Close,
-						22.0,
-						&crate::i18n::translate("friends-search-clear-search"),
-					)
-					.clicked()
+					if !query.is_empty()
+						&& icons::button(
+							ui,
+							Icon::Close,
+							22.0,
+							&crate::i18n::translate("friends-search-clear-search"),
+						)
+						.clicked()
 					{
 						query.clear();
+					} else {
+						ui.allocate_exact_size(vec2(22.0, 22.0), egui::Sense::hover());
 					}
 				});
 				edit
@@ -1042,7 +1048,8 @@ mod tests {
 		let query = friends.query.trim().to_lowercase();
 		let filter = |user: &&model::User| {
 			let (status, _, _, _) = profiles::presence(state, user.id, None);
-			(friends.tab != Tab::Online || matches!(status, Some("online" | "idle" | "dnd")))
+			(friends.tab == Tab::Restricted || state.user_ignored(user.id) != Some(true))
+				&& (friends.tab != Tab::Online || matches!(status, Some("online" | "idle" | "dnd")))
 				&& (user.name.to_lowercase().contains(&query)
 					|| state
 						.user_display_name(user)
@@ -1287,5 +1294,55 @@ mod tests {
 			assert_eq!(friends.list, restored);
 			check_cache(&mut friends, &state);
 		}
+	}
+
+	#[test]
+	fn ignored_friends_only_appear_in_blocked_and_ignored() {
+		let mut state = test_support::friends_demo_state();
+		let ignored_id = Id(1001);
+		let ignored = state.friend(ignored_id).unwrap().clone();
+		let username = state.friend_username(ignored_id).unwrap().to_owned();
+		let mut friends = Friends {
+			tab: Tab::Online,
+			..Default::default()
+		};
+		check_cache(&mut friends, &state);
+		apply(
+			&mut state,
+			Event::UserAction(Relationship::Relationships(Some(vec![(ignored_id, false)]))),
+		);
+		apply(
+			&mut state,
+			Event::UserAction(Relationship::Restrictions(Some(vec![(
+				ignored, username, true,
+			)]))),
+		);
+		apply(
+			&mut state,
+			Event::DirectPresence(vec![client_core::presence::Update {
+				user: ignored_id,
+				avatar: Patch::Absent,
+				status: Patch::Value("online".into()),
+				custom_status: Patch::Absent,
+				activities: Patch::Absent,
+				clients: Patch::Absent,
+			}]),
+		);
+		assert_eq!(state.user_ignored(ignored_id), Some(true));
+		assert!(
+			friends.sync_list(&state),
+			"ignore update must invalidate rows"
+		);
+		check_cache(&mut friends, &state);
+		assert!(!friends.list.contains(&ignored_id));
+
+		friends.tab = Tab::All;
+		check_cache(&mut friends, &state);
+		assert!(!friends.list.contains(&ignored_id));
+
+		friends.tab = Tab::Restricted;
+		check_cache(&mut friends, &state);
+		assert!(friends.list.contains(&ignored_id));
+		assert!(state.restricted_user(ignored_id).unwrap().2);
 	}
 }

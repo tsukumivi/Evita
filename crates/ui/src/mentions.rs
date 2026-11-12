@@ -80,6 +80,13 @@ pub(crate) fn user_mention_token(user: Id) -> String {
 	format!("<@{user}> ")
 }
 
+pub(crate) fn can_mention_mass(state: &State, channel: Id) -> bool {
+	state
+		.channel(channel)
+		.is_some_and(|channel| channel.guild.is_some())
+		&& state.permission(channel, model::permissions::MENTION_EVERYONE) == Some(true)
+}
+
 impl Candidate {
 	#[cfg(test)]
 	fn id(&self) -> Id {
@@ -594,7 +601,7 @@ impl Menu {
 						));
 					}
 				}
-				if state.permission(channel, model::permissions::MENTION_EVERYONE) == Some(true) {
+				if can_mention_mass(state, channel) {
 					for name in ["everyone", "here"] {
 						if let Some(rank) = rank(&query, name, Id(0)) {
 							ranked.push(((rank, 0, 0), Candidate::Mass { name }));
@@ -1627,6 +1634,9 @@ mod tests {
 			output.textures_delta.clear();
 			assert!(commands.is_empty());
 			assert_eq!(state.drafts[&Id(1)], expected);
+			if expected == "<@42> " {
+				assert!(ctx.memory(|memory| memory.has_focus(editor)));
+			}
 			assert!(view.draft_changes.contains(&Id(1)));
 		}
 	}
@@ -1726,6 +1736,7 @@ mod tests {
 			kind,
 			name: name.into(),
 			last_message: None,
+			nsfw: None,
 			parent_id: None,
 			position: 0,
 			recipients: vec![],
@@ -1735,6 +1746,30 @@ mod tests {
 			icon: None,
 		}
 	}
+
+	#[test]
+	fn mass_mentions_are_not_suggested_in_private_conversations() {
+		let state = State {
+			channels: vec![channel(1, None, 1, "Direct message")],
+			..State::default()
+		};
+
+		// Private-channel send permission is a compose shortcut, not permission to ping everyone.
+		assert_eq!(
+			state.permission(Id(1), model::permissions::MENTION_EVERYONE),
+			Some(true)
+		);
+		assert!(!can_mention_mass(&state, Id(1)));
+
+		let mut menu = Menu::default();
+		menu.refresh(&state, Id(1), "@everyone", Some("@everyone".len()), &[]);
+		assert!(
+			menu.candidates
+				.iter()
+				.all(|candidate| !matches!(candidate, Candidate::Mass { .. }))
+		);
+	}
+
 	#[test]
 	fn channel_references_scope_bound_and_insert_unicode_without_user_mentions() {
 		let mut menu = Menu::default();

@@ -57,6 +57,7 @@ mod server_settings_demo;
 mod sign_in;
 #[cfg(feature = "demo")]
 mod slash_demo;
+mod soundboard_upload;
 mod spotify;
 mod startup;
 mod sticker_upload;
@@ -1063,6 +1064,7 @@ struct Desktop {
 	role_icon_scope: Option<(u64, model::Id, model::Id, u64)>,
 	emoji_upload: emoji_upload::EmojiUpload,
 	sticker_upload: sticker_upload::StickerUpload,
+	soundboard_upload: soundboard_upload::SoundboardUpload,
 	clipboard: Option<clipboard::Paste>,
 	download_close_pending: bool,
 	window: Arc<winit::window::Window>,
@@ -2454,6 +2456,7 @@ impl Desktop {
 			role_icon_scope: None,
 			emoji_upload: emoji_upload::EmojiUpload::default(),
 			sticker_upload: sticker_upload::StickerUpload::default(),
+			soundboard_upload: soundboard_upload::SoundboardUpload::default(),
 			clipboard: None,
 			download_close_pending: false,
 			window_blur: transparency_available
@@ -2665,6 +2668,42 @@ impl Desktop {
 					}
 				}
 			}
+		}
+	}
+	/// Opens the companion shipped beside evita.exe. The companion remains a separate process
+	/// and owns its own settings and tray lifecycle.
+	fn sync_viviette(&mut self) {
+		if !self.messaging.launch_viviette_requested {
+			return;
+		}
+		self.messaging.launch_viviette_requested = false;
+		if self.fixture_only || self.state.demo {
+			return;
+		}
+		#[cfg(target_os = "windows")]
+		{
+			let executable = std::env::current_exe()
+				.ok()
+				.and_then(|path| path.parent().map(std::path::Path::to_path_buf))
+				.map(|directory| directory.join("Viviette.exe"));
+			match executable {
+				Some(executable) if executable.is_file() => {
+					let result = std::process::Command::new(&executable)
+						.current_dir(executable.parent().unwrap_or(std::path::Path::new(".")))
+						.spawn();
+					self.messaging.viviette_launch_status = Some(match result {
+						Ok(_) => ui::VivietteLaunchStatus::Opened,
+						Err(_) => ui::VivietteLaunchStatus::Failed,
+					});
+				}
+				_ => {
+					self.messaging.viviette_launch_status = Some(ui::VivietteLaunchStatus::Missing);
+				}
+			}
+		}
+		#[cfg(not(target_os = "windows"))]
+		{
+			self.messaging.viviette_launch_status = Some(ui::VivietteLaunchStatus::Missing);
 		}
 	}
 	/// Applies a log level, names the file in the page and reports a folder that cannot be written
@@ -4138,6 +4177,7 @@ impl Desktop {
 							name: title,
 							icon: None,
 							kind: 11,
+							nsfw: None,
 							recipients: vec![],
 							last_message: None,
 							member_list_id: None,
@@ -4194,6 +4234,7 @@ impl Desktop {
 							} else {
 								12
 							},
+							nsfw: None,
 							recipients: vec![],
 							last_message: None,
 							member_list_id: None,
@@ -4381,6 +4422,35 @@ impl Desktop {
 				Command::Quests { request } => Event::Quests {
 					request,
 					result: Ok(Vec::new()),
+				},
+				Command::ActivitySearch { request, query } => Event::ActivitySearch {
+					request,
+					result: Ok(if query.eq_ignore_ascii_case("wordle") {
+						vec![model::application_search::Application {
+							id: model::Id(1_211_781_489_931_452_447),
+							name: "Wordle".into(),
+							icon: None,
+							description: "Play Wordle from New York Times Games.".into(),
+							verified: true,
+							discoverable: true,
+							monetized: false,
+							tags: vec!["New York Times".into(), "Word game".into()],
+							categories: vec![model::application_search::Category {
+								id: 6,
+								name: "Games".into(),
+							}],
+							activity: Some(model::application_search::ActivityConfig {
+								supported_platforms: vec![
+									"web".into(),
+									"ios".into(),
+									"android".into(),
+								],
+								release_phase: Some("global_launch".into()),
+							}),
+						}]
+					} else {
+						Vec::new()
+					}),
 				},
 				Command::CreateGuild { sequence, .. } => Event::GuildCreated {
 					sequence,
@@ -5307,6 +5377,7 @@ impl Desktop {
 		self.retry_history_clears();
 		self.sync_plaintext_login();
 		self.sync_diagnostics_log(ctx);
+		self.sync_viviette();
 		self.sync_diagnostics_save(ctx);
 		let mut results = Vec::new();
 		if let Some(store) = &mut self.store {
@@ -6629,6 +6700,13 @@ impl eframe::App for Desktop {
 		}) {
 			self.messaging.accept_server_sticker(&ctx, scope, result);
 		}
+		if let Some((scope, result)) = self.soundboard_upload.poll(self.state.generation, |guild| {
+			self.state.server_admin.guild == Some(guild)
+				&& self.state.can_create_guild_soundboard(guild)
+				&& self.messaging.accepts_server_soundboard_upload()
+		}) {
+			self.messaging.accept_server_soundboard(scope, result);
+		}
 		self.messaging.voice_available = true;
 		if close_requested
 			&& !self.close_approved
@@ -7233,6 +7311,26 @@ impl eframe::App for Desktop {
 				if let Err(error) = result {
 					self.messaging
 						.accept_server_sticker(&ctx, scope, Err(error));
+				}
+			}
+			if let Some((generation, guild, request)) =
+				self.messaging.take_server_soundboard_request()
+			{
+				let scope = (generation, guild, request);
+				let result = if generation != self.state.generation
+					|| !self.state.can_create_guild_soundboard(guild)
+				{
+					Err("You can no longer add sounds to this server")
+				} else {
+					self.soundboard_upload.start(
+						scope,
+						self.runtime.handle(),
+						&ctx,
+						self.window.clone(),
+					)
+				};
+				if let Err(error) = result {
+					self.messaging.accept_server_soundboard(scope, Err(error));
 				}
 			}
 			for key in self.messaging.take_avatar_requests() {

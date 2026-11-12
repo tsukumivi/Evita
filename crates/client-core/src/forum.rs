@@ -687,6 +687,7 @@ mod tests {
 			parent_id: parent,
 			kind,
 			name: "Synthetic".into(),
+			nsfw: None,
 			position: 0,
 			recipients: vec![],
 			last_message: None,

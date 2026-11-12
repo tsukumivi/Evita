@@ -91,8 +91,9 @@ def main():
         payload.mkdir()
         output.mkdir()
         fixture = root / "fixture.rs"
-        fixture.write_text('fn main() { if let Some(p) = std::env::args().nth(1) { std::fs::write(p, b"ready").unwrap(); std::thread::sleep(std::time::Duration::from_secs(120)); } }')
+        fixture.write_text('fn main() { if let Some(arg) = std::env::args().nth(1) { if arg == "stop" { return; } std::fs::write(arg, b"ready").unwrap(); std::thread::sleep(std::time::Duration::from_secs(120)); } }')
         subprocess.run(["rustc", "--edition=2024", "-O", str(fixture), "-o", str(payload / "evita.exe")], check=True)
+        shutil.copy2(payload / "evita.exe", payload / "Viviette.exe")
         (payload / "LICENSE-MIT").write_text("Synthetic installer fixture")
         for name in ("install-notifications.ps1", "setup.ps1"):
             (payload / name).write_text("throw 'Installer must not run or install this optional script'")
@@ -148,6 +149,7 @@ def main():
                 subprocess.run(f'"{setup}" /S /D={installed}', check=True, timeout=30)
                 timings.append(round((time.perf_counter() - start) * 1000, 3))
                 assert (installed / "evita.exe").read_bytes() == (payload / "evita.exe").read_bytes()
+                assert (installed / "Viviette.exe").read_bytes() == (payload / "Viviette.exe").read_bytes()
                 assert uninstaller.is_file()
                 assert not (installed / "install-notifications.ps1").exists()
                 assert not (installed / "setup.ps1").exists()

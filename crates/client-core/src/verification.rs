@@ -183,6 +183,7 @@ mod tests {
 				guild: None,
 				parent_id: None,
 				kind: 1,
+				nsfw: None,
 				name: "Synthetic DM".into(),
 				position: 0,
 				recipients: vec![],

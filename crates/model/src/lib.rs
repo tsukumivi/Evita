@@ -1,6 +1,7 @@
 //! UI-neutral session entities. No filesystem or network dependencies.
 pub mod account;
 pub mod application_commands;
+pub mod application_search;
 mod image_sharing;
 pub mod polls;
 pub mod public_upload;
@@ -363,6 +364,8 @@ pub struct Channel {
 	pub position: i32,
 	pub name: String,
 	pub kind: u8,
+	/// Whether Discord marked this channel as age-restricted; absent on older payloads.
+	pub nsfw: Option<bool>,
 	pub recipients: Vec<User>,
 	/// Unofficial service member-list identity; absent when permission metadata is missing.
 	pub member_list_id: Option<String>,
@@ -394,6 +397,8 @@ pub struct ChannelPatch {
 	pub parent_id: Patch<Id>,
 	pub position: Patch<i32>,
 	pub kind: Patch<u8>,
+	/// Channel updates preserve the prior value when Discord omits this field.
+	pub nsfw: Patch<bool>,
 	pub message_count: Patch<u32>,
 	/// Channel updates carry whole objects, so present tags replace the known ones.
 	pub tags: Patch<Box<forum::Tags>>,

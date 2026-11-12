@@ -280,6 +280,7 @@ mod tests {
 				id: Id(10),
 				guild: None,
 				kind: 3,
+				nsfw: None,
 				name: "Group".into(),
 				icon: None,
 				last_message: None,
@@ -302,6 +303,7 @@ mod tests {
 			parent_id: Patch::Absent,
 			position: Patch::Absent,
 			kind: Patch::Absent,
+			nsfw: model::Patch::Absent,
 			message_count: Patch::Absent,
 			tags: Patch::Absent,
 		}

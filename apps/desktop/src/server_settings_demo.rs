@@ -212,6 +212,42 @@ pub fn execute_admin(
 			}
 			Outcome::Stickers(page)
 		}
+		Action::LoadSoundboard { .. } | Action::CreateSoundboard { .. } => {
+			let mut catalog = state.server_admin.soundboard.clone().unwrap_or_else(|| {
+				model::server_admin::Soundboard {
+					guild,
+					items: vec![model::server_admin::SoundboardSound {
+						id: Id(9201),
+						guild_id: Some(guild),
+						name: "Welcome".into(),
+						volume: 100,
+						emoji_id: None,
+						emoji_name: Some("👋".into()),
+						available: true,
+						user: Some(owner.clone()),
+					}],
+				}
+			});
+			if let Action::CreateSoundboard { name, .. } = action {
+				catalog.items.push(model::server_admin::SoundboardSound {
+					id: Id(catalog
+						.items
+						.iter()
+						.map(|sound| sound.id.0)
+						.max()
+						.unwrap_or(9200) + 1),
+					guild_id: Some(guild),
+					name,
+					volume: 100,
+					emoji_id: None,
+					emoji_name: None,
+					available: true,
+					user: Some(owner.clone()),
+				});
+			}
+			Outcome::Soundboard(catalog)
+		}
+		Action::PlaySoundboard { .. } => Outcome::SoundboardPlayed,
 		Action::LoadMembers(query) => {
 			let mut page = {
 				let roles: Vec<_> = state

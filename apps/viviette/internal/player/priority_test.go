@@ -1,0 +1,59 @@
+//go:build windows
+
+package player
+
+import "testing"
+
+func TestArbitrateHonorsPriorityHierarchy(t *testing.T) {
+	tracks := []Track{
+		{Source: "browser", AppID: "MSEdge", Title: "video", Playing: true},
+		{Source: "spotify", AppID: "Spotify.exe", Title: "song", Playing: true},
+	}
+
+	if got := Arbitrate(tracks, []string{"browser", "spotify", "spotifyapi", "applemusic", "generic"}, nil); got == nil || got.Source != "browser" {
+		t.Fatalf("priority order not honored: got=%+v", got)
+	}
+
+	if got := Arbitrate(tracks, []string{"spotify", "browser"}, nil); got == nil || got.Source != "spotify" {
+		t.Fatalf("reversed order not honored: got=%+v", got)
+	}
+}
+
+func TestArbitratePromotesWhenTopPriorityDisappears(t *testing.T) {
+
+	partial := []Track{{Source: "spotifyapi", Title: "api", Playing: true}, {Source: "generic", Title: "gen", Playing: true}}
+	order := []string{"applemusic", "spotify", "spotifyapi", "browser", "generic"}
+	if got := Arbitrate(partial, order, nil); got == nil || got.Source != "spotifyapi" {
+		t.Fatalf("fallback ignored order: got=%+v", got)
+	}
+
+	withBrowser := make([]Track, 0, len(partial)+1)
+	withBrowser = append(withBrowser, partial...)
+	withBrowser = append(withBrowser, Track{Source: "browser", Title: "video", Playing: true})
+	got := Arbitrate(withBrowser, order, nil)
+
+	got = Arbitrate(withBrowser, []string{"applemusic", "spotify", "browser", "spotifyapi", "generic"}, nil)
+	if got == nil || got.Source != "browser" {
+		t.Fatalf("expected browser at top: got=%+v", got)
+	}
+}
+
+func TestArbitratePlayingBeatsHigherRankedPaused(t *testing.T) {
+	tracks := []Track{
+		{Source: "browser", Title: "paused video", Playing: false},
+		{Source: "generic", Title: "playing player", Playing: true},
+	}
+
+	order := []string{"browser", "generic"}
+	if got := Arbitrate(tracks, order, nil); got == nil || got.Source != "generic" {
+		t.Fatalf("paused outranked playing: got=%+v", got)
+	}
+}
+
+func TestArbitrateMissingSourcesRankLast(t *testing.T) {
+	tracks := []Track{{Source: "unknown-source", Title: "mystery", Playing: true}, {Source: "browser", Title: "video", Playing: true}}
+	got := Arbitrate(tracks, []string{"browser", "spotify"}, nil)
+	if got == nil || got.Source != "browser" {
+		t.Fatalf("unknown sources must rank below listed ones: got=%+v", got)
+	}
+}

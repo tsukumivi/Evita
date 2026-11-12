@@ -67,6 +67,7 @@ pub fn channel(state: &State, user: Id) -> Result<Channel, Failure> {
 			guild: None,
 			name: recipient.name.clone(),
 			kind: 1,
+			nsfw: None,
 			parent_id: None,
 			position: 0,
 			recipients: vec![recipient.clone()],

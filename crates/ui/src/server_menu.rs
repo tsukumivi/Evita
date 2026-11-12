@@ -111,6 +111,7 @@ impl ServerMenu {
 		if (state.can_manage_guild(guild)
 			|| state.can_open_role_settings(guild)
 			|| state.can_open_emoji_settings(guild)
+			|| state.can_open_soundboard_settings(guild)
 			|| state.can_open_integration_settings(guild)
 			|| state.can_open_audit_log_settings(guild)
 			|| state.can_open_member_settings(guild))
