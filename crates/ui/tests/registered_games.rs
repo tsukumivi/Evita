@@ -51,8 +51,9 @@ fn scroll_settings_to_bottom(
 				egui::Event::PointerMoved(pointer),
 				egui::Event::MouseWheel {
 					unit: egui::MouseWheelUnit::Point,
+					phase: egui::TouchPhase::Move,
 					delta: egui::vec2(0.0, -300.0),
-					modifiers: Default::default(),
+					modifiers: egui::Modifiers::NONE,
 					source: egui::MouseWheelSource::Unknown,
 				},
 			],
