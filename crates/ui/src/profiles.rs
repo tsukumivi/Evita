@@ -1593,17 +1593,17 @@ impl Theme {
 fn section(ui: &mut egui::Ui, theme: &Theme, count: &mut usize, text: &str, full: bool) {
 	let text = crate::i18n::translate_if_key(text);
 	if *count > 0 {
-		ui.add_space(if full { 18.0 } else { 10.0 });
+		ui.add_space(if full { 14.0 } else { 10.0 });
 	}
 	*count += 1;
 	if full {
 		ui.label(
 			RichText::new(sentence(&text))
-				.size(13.0)
+				.size(12.0)
 				.strong()
 				.color(theme.muted),
 		);
-		ui.add_space(4.0);
+		ui.add_space(3.0);
 	} else {
 		ui.label(RichText::new(text).size(12.0).strong().color(theme.muted));
 		ui.add_space(2.0);
@@ -1684,10 +1684,11 @@ fn mutual_row(
 	ui: &mut egui::Ui,
 	theme: &Theme,
 	name: &str,
+	name_style: Option<&model::NameStyle>,
 	face: impl FnOnce(&mut egui::Ui, Rect),
 ) -> egui::Response {
 	let (rect, response) =
-		ui.allocate_exact_size(vec2(ui.available_width(), 44.0), egui::Sense::click());
+		ui.allocate_exact_size(vec2(ui.available_width(), 40.0), egui::Sense::click());
 	if response.hovered() {
 		ui.painter().rect_filled(rect, 8, theme.chip_hover);
 	}
@@ -1696,19 +1697,27 @@ fn mutual_row(
 		Vec2::splat(32.0),
 	);
 	face(ui, avatar);
-	let galley = ui.painter().layout(
-		name.to_owned(),
-		egui::FontId::proportional(14.0),
-		theme.text,
-		rect.right() - avatar.right() - 20.0,
+	let name_rect = Rect::from_min_max(
+		pos2(avatar.right() + 8.0, rect.top()),
+		pos2(rect.right() - 8.0, rect.bottom()),
 	);
-	ui.painter().galley(
-		pos2(
-			avatar.right() + 12.0,
-			rect.center().y - galley.size().y * 0.5,
-		),
-		galley,
-		theme.text,
+	ui.scope_builder(
+		UiBuilder::new()
+			.max_rect(name_rect)
+			.layout(egui::Layout::left_to_right(egui::Align::Center)),
+		|ui| {
+			crate::name_styles::label(
+				ui,
+				name_style,
+				name,
+				egui::FontId::proportional(14.0),
+				None,
+				theme.card,
+				theme.text,
+				egui::Sense::hover(),
+				true,
+			);
+		},
 	);
 	response.on_hover_cursor(egui::CursorIcon::PointingHand)
 }
@@ -1737,7 +1746,7 @@ fn mutual_rows(
 					},
 					|guild| guild.name.clone(),
 				);
-				let row = mutual_row(ui, theme, &name, |ui, rect| {
+				let row = mutual_row(ui, theme, &name, None, |ui, rect| {
 					if let Some(guild) = guild {
 						avatars.paint_guild(ui, guild, rect, state.demo, 16);
 					} else {
@@ -1751,11 +1760,17 @@ fn mutual_rows(
 		}
 		Mutuals::Friends => {
 			for friend in &data.mutual_friends {
-				let row = mutual_row(ui, theme, state.user_display_name(friend), |ui, rect| {
-					ui.scope_builder(UiBuilder::new().max_rect(rect), |ui| {
-						avatars.show_plain(ui, friend, 32.0, state.demo);
-					});
-				});
+				let row = mutual_row(
+					ui,
+					theme,
+					state.user_display_name(friend),
+					crate::name_styles::style(friend),
+					|ui, rect| {
+						ui.scope_builder(UiBuilder::new().max_rect(rect), |ui| {
+							avatars.show_plain(ui, friend, 32.0, state.demo);
+						});
+					},
+				);
 				if row.clicked() {
 					action = Some(Action::Profile(friend.clone()));
 				}
@@ -2039,7 +2054,7 @@ fn connection_icons(
 	};
 	if named {
 		ui.vertical(|ui| {
-			ui.spacing_mut().item_spacing.y = 8.0;
+			ui.spacing_mut().item_spacing.y = 6.0;
 			for item in connections {
 				connection(ui, item);
 			}
@@ -2513,9 +2528,9 @@ fn full_panel(
 		rule,
 		Stroke::new(1.0, theme.divider),
 	);
-	ui.add_space(20.0);
+	ui.add_space(16.0);
 	ui.push_id(("full-profile-tab", *tab as u8), |ui| {
-		ui.spacing_mut().item_spacing.y = 12.0;
+		ui.spacing_mut().item_spacing.y = 8.0;
 		if *tab != FullTab::Activity && view.is_none_or(|view| view.loading) && data.is_none() {
 			ui.spinner();
 			return;
@@ -3938,7 +3953,7 @@ fn card_view(
 						}
 
 						if full {
-							ui.add_space(16.0);
+							ui.add_space(12.0);
 							ui.horizontal_wrapped(|ui| {
 								ui.spacing_mut().item_spacing = vec2(8.0, 8.0);
 								if !own && message_button(ui, state, user).clicked() {
@@ -3959,7 +3974,7 @@ fn card_view(
 									}
 								});
 							});
-							ui.add_space(12.0);
+							ui.add_space(8.0);
 						}
 						if !text_badges.is_empty() {
 							ui.add_space(2.0);
@@ -4070,7 +4085,7 @@ fn card_view(
 							};
 							let details = |ui: &mut egui::Ui| {
 								ui.spacing_mut().item_spacing.y = 4.0;
-								let body = if full { 15.0 } else { 13.0 };
+								let body = if full { 14.0 } else { 13.0 };
 								let mut sections = 0;
 								if !full && !activities.is_empty() {
 									sections += 1;

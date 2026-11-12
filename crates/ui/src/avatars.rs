@@ -17,6 +17,9 @@ pub type GifFrames = Vec<(Duration, std::sync::Arc<ColorImage>)>;
 const ANIMATIONS: usize = 128;
 const ANIMATION_BYTES: usize = 128 * 1024 * 1024;
 const ANIMATION_INTERVAL: Duration = Duration::from_millis(16);
+/// Profile banners advance no slower than five frames per second, while faster source timings
+/// remain intact. Other GIFs retain the timing supplied by their decoder.
+const PROFILE_BANNER_MAX_FRAME_DELAY: Duration = Duration::from_millis(200);
 /// Decoded frames unplayed for this long are released; the still stays, and the frames are decoded
 /// again from the disk cache once the artwork would play. Off-screen GIFs and hover-only avatars
 /// otherwise held their full RGBA frame sets until a whole pool filled.
@@ -101,27 +104,47 @@ pub(crate) struct Avatars {
 }
 
 impl Animation {
-	fn advance(&mut self, ctx: &egui::Context) -> Option<TextureHandle> {
-		let total_nanos = self.total.as_nanos();
+	fn advance(
+		&mut self,
+		ctx: &egui::Context,
+		maximum_frame_delay: Option<Duration>,
+	) -> Option<TextureHandle> {
+		let total = maximum_frame_delay.map_or(self.total, |maximum| {
+			self.frames
+				.iter()
+				.map(|(delay, _)| playback_delay(*delay, Some(maximum)))
+				.sum()
+		});
+		let total_nanos = total.as_nanos();
 		if total_nanos == 0 {
 			return None;
 		}
 		let elapsed_nanos = (self.started.elapsed().as_nanos() % total_nanos) as u64;
-		self.seek(ctx, Duration::from_nanos(elapsed_nanos))
+		self.seek(
+			ctx,
+			Duration::from_nanos(elapsed_nanos),
+			maximum_frame_delay,
+		)
 	}
 	/// Shows the frame at `elapsed` into the clip, which must be shorter than `total`.
-	fn seek(&mut self, ctx: &egui::Context, mut elapsed: Duration) -> Option<TextureHandle> {
+	fn seek(
+		&mut self,
+		ctx: &egui::Context,
+		mut elapsed: Duration,
+		maximum_frame_delay: Option<Duration>,
+	) -> Option<TextureHandle> {
 		let now = Instant::now();
 		self.played = now;
 		let mut target_index = self.frames.len().saturating_sub(1);
 		let mut frame_remaining = Duration::ZERO;
 		for (index, (delay, _)) in self.frames.iter().enumerate() {
-			if elapsed < *delay {
+			let delay = playback_delay(*delay, maximum_frame_delay);
+			if elapsed < delay {
 				target_index = index;
-				frame_remaining = *delay - elapsed;
+				frame_remaining = delay - elapsed;
 				break;
 			}
-			elapsed -= *delay;
+			elapsed -= delay;
 		}
 
 		if self.frame != target_index {
@@ -146,6 +169,11 @@ impl Animation {
 		ctx.request_repaint_after(frame_remaining.max(Duration::from_millis(1)));
 		self.texture.clone()
 	}
+}
+
+/// Optional playback policy that shortens slow source frames without slowing faster animation.
+fn playback_delay(delay: Duration, maximum_frame_delay: Option<Duration>) -> Duration {
+	maximum_frame_delay.map_or(delay, |maximum| delay.min(maximum))
 }
 
 fn paint_texture(
@@ -711,7 +739,7 @@ impl Avatars {
 		if let Some(key) = animated_emoji_key(id, animated && self.animate_gifs && !demo)
 			&& !self.no_animations.contains(&key)
 		{
-			let frame = self.advance_animation(ctx, &key, false);
+			let frame = self.advance_animation(ctx, &key, false, None);
 			// Frames evicted from the shared pool come back while the emoji is visible.
 			if frame.is_none()
 				&& self.textures.contains_key(&key)
@@ -797,7 +825,7 @@ impl Avatars {
 			}
 			model::ImageShare::Sticker { id, format_type } => {
 				let key = self.sticker_key(ctx, id, format_type, demo);
-				let animated = self.advance_animation(ctx, &key, false);
+				let animated = self.advance_animation(ctx, &key, false, None);
 				if let Some(entry) = self.textures.get_mut(&key) {
 					entry.0 = Instant::now();
 					Some(
@@ -980,7 +1008,7 @@ impl Avatars {
 		demo: bool,
 	) -> Option<(egui::TextureId, [usize; 2])> {
 		let key = self.preview_key(preview);
-		let animated_texture = self.advance_animation(ctx, &key, false);
+		let animated_texture = self.advance_animation(ctx, &key, false, None);
 		if let Some(entry) = self.textures.get_mut(&key) {
 			entry.0 = Instant::now();
 			let texture = animated_texture.as_ref().unwrap_or(&entry.1);
@@ -1024,7 +1052,8 @@ impl Avatars {
 			{
 				self.request(key.clone());
 			}
-			let animated_texture = self.advance_animation(ui.ctx(), &key, true);
+			let animated_texture =
+				self.advance_animation(ui.ctx(), &key, true, Some(PROFILE_BANNER_MAX_FRAME_DELAY));
 			#[cfg(any(test, feature = "demo"))]
 			if demo && !self.textures.contains_key(&key) {
 				let mut image = ColorImage::filled([128, 48], color);
@@ -1217,6 +1246,7 @@ impl Avatars {
 		ctx: &egui::Context,
 		key: &str,
 		hovered: bool,
+		maximum_frame_delay: Option<Duration>,
 	) -> Option<TextureHandle> {
 		if !self.animate_gifs
 			|| !ctx.input(|input| input.focused)
@@ -1225,7 +1255,7 @@ impl Avatars {
 			return None;
 		}
 		if let Some(animation) = self.animations.get_mut(key) {
-			return animation.advance(ctx);
+			return animation.advance(ctx, maximum_frame_delay);
 		}
 		if is_animated_profile_or_avatar_key(key) {
 			if self.wanted.len() >= REQUESTS {
@@ -1291,7 +1321,7 @@ impl Avatars {
 				self.request(key.to_string());
 			}
 			animated_texture =
-				self.advance_animation(ui.ctx(), key, ui.rect_contains_pointer(rect));
+				self.advance_animation(ui.ctx(), key, ui.rect_contains_pointer(rect), None);
 		}
 		let animated = animated_texture.is_some();
 		let full = {
@@ -1829,6 +1859,28 @@ fn synthetic_gif(gif: &model::Gif) -> ColorImage {
 
 #[cfg(test)]
 mod tests {
+	#[test]
+	fn profile_banner_animation_shortens_only_slow_source_frames() {
+		assert_eq!(
+			playback_delay(
+				Duration::from_millis(600),
+				Some(PROFILE_BANNER_MAX_FRAME_DELAY)
+			),
+			Duration::from_millis(200)
+		);
+		assert_eq!(
+			playback_delay(
+				Duration::from_millis(80),
+				Some(PROFILE_BANNER_MAX_FRAME_DELAY)
+			),
+			Duration::from_millis(80)
+		);
+		assert_eq!(
+			playback_delay(Duration::from_millis(600), None),
+			Duration::from_millis(600)
+		);
+	}
+
 	#[test]
 	fn idle_artwork_expires_without_evicting_visible_images_and_reloads() {
 		let ctx = egui::Context::default();
