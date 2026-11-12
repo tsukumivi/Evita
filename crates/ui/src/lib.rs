@@ -5996,15 +5996,13 @@ impl MessagingUi {
 							.clicked();
 						(edit, search_clicked)
 					});
-					if (response.inner.0.lost_focus()
+					if ((response.inner.0.lost_focus()
 						&& ui.input(|input| input.key_pressed(egui::Key::Enter)))
-						|| response.inner.1
-					{
-						if let Some(command) =
+						|| response.inner.1)
+						&& let Some(command) =
 							state.activity_search.request(&self.activity_search_query)
-						{
-							commands.push(command);
-						}
+					{
+						commands.push(command);
 					}
 					ui.add_space(8.0);
 					if state.activity_search.loading {

@@ -7,6 +7,8 @@ use model::{
 	server_settings::{Edit, Settings, Trait},
 };
 
+type ServerSoundboardResult = Result<Option<(String, String, Vec<u8>, u16)>, &'static str>;
+
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
 enum Page {
 	#[default]
@@ -227,7 +229,7 @@ impl MessagingUi {
 	pub fn accept_server_soundboard(
 		&mut self,
 		scope: (u64, Id, u64),
-		result: Result<Option<(String, String, Vec<u8>, u16)>, &'static str>,
+		result: ServerSoundboardResult,
 	) {
 		if self.server_settings.scope == Some((scope.0, scope.1))
 			&& self.server_settings.soundboard.request == scope.2
