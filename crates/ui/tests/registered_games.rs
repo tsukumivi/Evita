@@ -11,9 +11,7 @@ fn frame(
 		egui::RawInput {
 			screen_rect: Some(egui::Rect::from_min_size(
 				egui::Pos2::ZERO,
-				// Windows adds the Viviette companion card above these game sections.
-				// Keep enough room to exercise every game row below it on every CI architecture.
-				egui::vec2(1120.0, 2000.0),
+				egui::vec2(1120.0, 760.0),
 			)),
 			events,
 			..Default::default()
@@ -34,6 +32,32 @@ fn frame(
 		})
 		.collect();
 	output.drop_without_applying_deltas();
+	texts
+}
+
+fn scroll_settings_to_bottom(
+	ctx: &egui::Context,
+	view: &mut MessagingUi,
+	state: &mut client_core::State,
+) -> Vec<(String, egui::Pos2)> {
+	let pointer = egui::pos2(700.0, 380.0);
+	let mut texts = Vec::new();
+	for _ in 0..8 {
+		texts = frame(
+			ctx,
+			view,
+			state,
+			vec![
+				egui::Event::PointerMoved(pointer),
+				egui::Event::MouseWheel {
+					unit: egui::MouseWheelUnit::Point,
+					delta: egui::vec2(0.0, -300.0),
+					modifiers: Default::default(),
+					source: egui::MouseWheelSource::Unknown,
+				},
+			],
+		);
+	}
 	texts
 }
 
@@ -139,7 +163,7 @@ fn current_game_can_be_renamed_and_running_programs_added() {
 		"opt/my game/mygame.x86_64"
 	);
 	assert_eq!(view.registered_games[1].application, None);
-	let texts = frame(&ctx, &mut view, &mut state, vec![]);
+	let texts = scroll_settings_to_bottom(&ctx, &mut view, &mut state);
 	find(&texts, "Intel service");
 	find(&texts, "opt/my game/mygame.x86_64");
 }
@@ -184,6 +208,13 @@ fn one_page_shares_activity_and_lists_detected_games_that_can_be_hidden() {
 		"Enable on Discord",
 		"Current Game",
 		"Added Games",
+	] {
+		find(&texts, label);
+	}
+	assert!(texts.iter().all(|(text, _)| text != "Game Activity"));
+
+	let texts = scroll_settings_to_bottom(&ctx, &mut view, &mut state);
+	for label in [
 		"Scanned game",
 		"Detected automatically · Last played today",
 		"Manual game",
@@ -191,13 +222,12 @@ fn one_page_shares_activity_and_lists_detected_games_that_can_be_hidden() {
 	] {
 		find(&texts, label);
 	}
-	assert!(texts.iter().all(|(text, _)| text != "Game Activity"));
 	// The most recently played game is listed first.
 	assert!(find(&texts, "Scanned game").y < find(&texts, "Manual game").y);
 
 	// A hidden detection stays listed so it can be restored.
 	view.registered_games[1].hidden = true;
-	let texts = frame(&ctx, &mut view, &mut state, vec![]);
+	let texts = scroll_settings_to_bottom(&ctx, &mut view, &mut state);
 	find(&texts, "Hidden. Evita will not detect this game.");
 	frame(&ctx, &mut view, &mut state, click(find(&texts, "Restore")));
 	assert!(!view.registered_games[1].hidden);
