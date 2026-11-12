@@ -11,7 +11,9 @@ fn frame(
 		egui::RawInput {
 			screen_rect: Some(egui::Rect::from_min_size(
 				egui::Pos2::ZERO,
-				egui::vec2(1120.0, 760.0),
+				// Windows adds the Viviette companion card above these game sections.
+				// Keep enough room to exercise the page below it on every CI architecture.
+				egui::vec2(1120.0, 1200.0),
 			)),
 			events,
 			..Default::default()
