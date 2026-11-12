@@ -1001,6 +1001,7 @@ pub fn seed_access_marks(state: &mut State) {
 		position,
 		name: name.into(),
 		kind,
+		nsfw: None,
 		recipients: vec![],
 		icon: None,
 		member_list_id: None,
@@ -1037,7 +1038,6 @@ pub fn seed_access_marks(state: &mut State) {
 	let deny_everyone = Overwrite {
 		id: GUILD,
 		kind: 0,
-		nsfw: None,
 		allow: 0,
 		deny: VIEW_CHANNEL,
 	};
