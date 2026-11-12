@@ -11,7 +11,9 @@ fn frame(
 		egui::RawInput {
 			screen_rect: Some(egui::Rect::from_min_size(
 				egui::Pos2::ZERO,
-				egui::vec2(1120.0, 760.0),
+				// The settings dialog has a fixed height and the process picker needs
+				// room to exercise its controls; the game list is still scrolled below.
+				egui::vec2(1120.0, 2000.0),
 			)),
 			events,
 			..Default::default()
