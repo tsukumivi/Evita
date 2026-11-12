@@ -63,7 +63,13 @@ impl MessagingUi {
 			.map(|call| call.channel)
 	}
 
-	pub(super) fn show_fullscreen_voice(&mut self, ctx: &egui::Context, state: &mut State) -> bool {
+	pub(super) fn show_fullscreen_voice(
+		&mut self,
+		root: &mut egui::Ui,
+		state: &mut State,
+		commands: &mut Vec<Command>,
+	) -> bool {
+		let ctx = root.ctx().clone();
 		let Some((focus, _, _, _)) = self.voice_fullscreen else {
 			return false;
 		};
@@ -83,20 +89,32 @@ impl MessagingUi {
 			)
 			.backdrop_color(egui::Color32::BLACK)
 			.frame(egui::Frame::NONE)
-			.show(ctx, |ui| {
+			.show(&ctx, |ui| {
 				ui.set_min_size(screen.size());
 				let rect = egui::Rect::from_min_size(screen.min, screen.size());
-				ui.painter().rect_filled(rect, 0, STAGE_FILL);
+				let chat_width = if self.voice_chat_open {
+					(rect.width() * 0.38)
+						.clamp(340.0, 480.0)
+						.min(rect.width() * 0.62)
+				} else {
+					0.0
+				};
+				let stage = egui::Rect::from_min_max(
+					rect.min,
+					egui::pos2(rect.right() - chat_width, rect.bottom()),
+				);
+				ui.painter().rect_filled(stage, 0, STAGE_FILL);
+				let mut stage_ui = ui.new_child(egui::UiBuilder::new().max_rect(stage));
 				match focus {
-					StageFocus::LocalScreen => self.screen_tile(ui, rect, false),
+					StageFocus::LocalScreen => self.screen_tile(&mut stage_ui, stage, false),
 					StageFocus::Stream(user) => {
-						self.stream_tile(ui, state, rect, channel, user, true)
+						self.stream_tile(&mut stage_ui, state, stage, channel, user, true)
 					}
 					StageFocus::Participant(_) => unreachable!("validated screen share"),
 				}
 				let button = ui.put(
 					egui::Rect::from_min_size(
-						rect.right_top() + egui::vec2(-52.0, 12.0),
+						stage.right_top() + egui::vec2(-52.0, 12.0),
 						egui::Vec2::splat(40.0),
 					),
 					egui::Button::new("")
@@ -113,6 +131,48 @@ impl MessagingUi {
 					egui::WidgetInfo::labeled(egui::Role::Button, true, "Exit fullscreen")
 				});
 				exit |= button.on_hover_text("Exit fullscreen (Esc)").clicked();
+				let chat_toggle = ui.put(
+					egui::Rect::from_min_size(
+						stage.right_top() + egui::vec2(-100.0, 12.0),
+						egui::Vec2::splat(40.0),
+					),
+					egui::Button::new("")
+						.fill(egui::Color32::from_black_alpha(180))
+						.corner_radius(8),
+				);
+				crate::icons::paint(
+					ui.painter(),
+					crate::icons::Icon::Forum,
+					chat_toggle.rect.shrink(9.0),
+					egui::Color32::WHITE,
+				);
+				chat_toggle.widget_info(|| {
+					egui::WidgetInfo::selected(
+						egui::Role::Button,
+						true,
+						self.voice_chat_open,
+						if self.voice_chat_open {
+							"Hide chat"
+						} else {
+							"Show chat"
+						},
+					)
+				});
+				if chat_toggle
+					.on_hover_text("Show voice channel chat")
+					.clicked()
+				{
+					self.voice_chat_open = !self.voice_chat_open;
+				}
+				let controls_rect = egui::Rect::from_min_max(
+					egui::pos2(stage.left(), stage.bottom() - CONTROL_HEIGHT - STAGE_MARGIN),
+					stage.right_bottom(),
+				);
+				let mut controls = ui.new_child(egui::UiBuilder::new().max_rect(controls_rect));
+				self.call_controls(&mut controls, state, channel, commands);
+				if self.voice_chat_open {
+					self.fullscreen_voice_chat(ui, state, channel, commands, stage.right(), rect);
+				}
 			});
 		// "Stop watching" inside the fullscreen tile applies now, not after leaving fullscreen.
 		self.apply_watch_request(state);
@@ -121,6 +181,72 @@ impl MessagingUi {
 			self.exit_voice_fullscreen();
 		}
 		true
+	}
+
+	/// A docked, interactive copy of the selected channel timeline and composer for fullscreen calls.
+	fn fullscreen_voice_chat(
+		&mut self,
+		ui: &mut egui::Ui,
+		state: &mut State,
+		channel: Id,
+		commands: &mut Vec<Command>,
+		left: f32,
+		window: egui::Rect,
+	) {
+		let colors = design::palette(ui);
+		let panel = egui::Rect::from_min_max(egui::pos2(left, window.top()), window.right_bottom());
+		ui.painter().rect_filled(panel, 0, colors.chat);
+		let header = egui::Rect::from_min_size(panel.min, egui::vec2(panel.width(), 48.0));
+		let mut header_ui = ui.new_child(
+			egui::UiBuilder::new()
+				.max_rect(header)
+				.layout(egui::Layout::left_to_right(egui::Align::Center)),
+		);
+		header_ui.spacing_mut().item_spacing.x = 10.0;
+		crate::icons::inline(
+			&mut header_ui,
+			crate::icons::Icon::Speaker,
+			18.0,
+			colors.muted,
+		);
+		let channel_name = state
+			.channel(channel)
+			.map_or("Voice chat", |c| c.name.as_str());
+		header_ui.label(design::semibold(&header_ui, channel_name, 14.0));
+		let feed = egui::Rect::from_min_max(
+			egui::pos2(panel.left(), header.bottom()),
+			egui::pos2(panel.right(), panel.bottom() - 88.0),
+		);
+		let mut feed_ui = ui.new_child(egui::UiBuilder::new().max_rect(feed));
+		feed_ui.set_clip_rect(feed.intersect(ui.clip_rect()));
+		self.timeline.hide_media_links = self.reading_preferences.hide_media_links;
+		self.timeline.compact_messages = self.reading_preferences.compact_messages;
+		self.timeline.instant_scrolling = !self.reading_preferences.smooth_scrolling;
+		self.timeline.show_with_scroll(
+			&mut feed_ui,
+			state,
+			&mut self.editing,
+			&mut self.deleting,
+			(&mut self.avatars, &mut self.profile),
+			self.pending_upload.as_ref(),
+			&mut self.scroll,
+		);
+		let composer_rect = egui::Rect::from_min_size(
+			egui::pos2(panel.left() + 12.0, panel.bottom() - 80.0),
+			egui::vec2(panel.width() - 24.0, 68.0),
+		);
+		let mut composer_ui = ui.new_child(egui::UiBuilder::new().max_rect(composer_rect));
+		self.composer(&mut composer_ui, state, channel, ui.ctx(), commands);
+		if std::mem::take(&mut self.timeline.load_older)
+			&& let Some(command) = state.older_history()
+		{
+			commands.push(command);
+		}
+		if std::mem::take(&mut self.timeline.load_newer)
+			&& let Some(command) = state.newer_history()
+		{
+			commands.push(command);
+		}
 	}
 
 	/// Effective screen-share audio level, independent of participant voice levels.
@@ -4872,12 +4998,17 @@ fn elapsed_label(call: &client_core::voice::Call) -> Option<String> {
 		.or(call.connected_at)?
 		.elapsed()
 		.as_secs();
-	Some(format!(
-		"{:02}:{:02}:{:02}",
-		seconds / 3600,
-		seconds / 60 % 60,
-		seconds % 60
-	))
+	let minutes = seconds / 60;
+	if seconds >= 3600 {
+		Some(format!(
+			"{}:{:02}:{:02}",
+			seconds / 3600,
+			minutes % 60,
+			seconds % 60
+		))
+	} else {
+		Some(format!("{minutes:02}:{:02}", seconds % 60))
+	}
 }
 
 fn status_icon(ui: &mut egui::Ui, icon: crate::icons::Icon, color: egui::Color32, label: &str) {
@@ -5862,12 +5993,16 @@ mod tests {
 		));
 		let call = state.voice.active.as_mut().unwrap();
 		assert!(elapsed_label(call).is_none());
-		call.connected_at = Some(std::time::Instant::now() - std::time::Duration::from_secs(3663));
+		call.connected_at = Some(std::time::Instant::now() - std::time::Duration::from_secs(1530));
 		call.phase = Phase::Waiting;
-		assert_eq!(elapsed_label(call).as_deref(), Some("01:01:03"));
+		assert_eq!(elapsed_label(call).as_deref(), Some("25:30"));
+		call.connected_at = Some(std::time::Instant::now() - std::time::Duration::from_secs(3599));
+		assert_eq!(elapsed_label(call).as_deref(), Some("59:59"));
+		call.connected_at = Some(std::time::Instant::now() - std::time::Duration::from_secs(3663));
+		assert_eq!(elapsed_label(call).as_deref(), Some("1:01:03"));
 		call.channel_started_at =
 			Some(std::time::Instant::now() - std::time::Duration::from_secs(7540));
-		assert_eq!(elapsed_label(call).as_deref(), Some("02:05:40"));
+		assert_eq!(elapsed_label(call).as_deref(), Some("2:05:40"));
 		call.phase = Phase::Failed;
 		assert!(elapsed_label(call).is_none());
 		state.demo = true;

@@ -4650,7 +4650,7 @@ impl MessagingUi {
 			self.navigate_history(state, &mut commands, back);
 		}
 		// Fullscreen media owns the whole client surface, including during native resizing.
-		if self.show_fullscreen_voice(ui.ctx(), state) {
+		if self.show_fullscreen_voice(ui, state, &mut commands) {
 			ui.painter()
 				.rect_filled(ui.max_rect(), 0, egui::Color32::BLACK);
 			return commands;
