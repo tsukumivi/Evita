@@ -2974,6 +2974,7 @@ mod tests {
 					position: 0,
 					name: "Synthetic DM".into(),
 					kind,
+					nsfw: None,
 					recipients: vec![owner.clone()],
 					icon: None,
 					member_list_id: None,

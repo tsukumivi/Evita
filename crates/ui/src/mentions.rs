@@ -1553,6 +1553,7 @@ mod tests {
 				position: 0,
 				name: "Synthetic DM".into(),
 				kind,
+				nsfw: None,
 				recipients: vec![user(42, "Zoe")],
 				member_list_id: None,
 				tags: None,

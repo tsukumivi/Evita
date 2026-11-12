@@ -4519,6 +4519,7 @@ mod tests {
 			last_message: None,
 			parent_id: None,
 			position: 0,
+			nsfw: None,
 			recipients: vec![],
 			member_list_id: None,
 			tags: None,

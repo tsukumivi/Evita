@@ -7828,6 +7828,7 @@ mod tests {
 					position: 0,
 					name: "Synthetic unread conversation".into(),
 					kind,
+					nsfw: None,
 					recipients: vec![],
 					member_list_id: None,
 					tags: None,
