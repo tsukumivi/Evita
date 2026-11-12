@@ -390,6 +390,7 @@ mod tests {
 			kind,
 			position: 0,
 			name: format!("Synthetic thread {id}"),
+			nsfw: None,
 			recipients: vec![],
 			last_message: None,
 			member_list_id: None,

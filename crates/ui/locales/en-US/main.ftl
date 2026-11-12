@@ -3257,6 +3257,32 @@ server-settings-page-profile = Server Profile
 server-settings-page-roles = Roles
 # Context: label
 server-settings-page-stickers = Stickers
+server-settings-page-soundboard = Soundboard
+server-soundboard-subtitle = Manage this server's soundboard and add custom sounds.
+server-soundboard-upload = Upload sound
+server-soundboard-reload = Reload soundboard
+server-soundboard-uploading = Uploading sound…
+server-soundboard-loading = Loading soundboard…
+server-soundboard-file-guidance = Choose an MP3 or Ogg file up to 512 KB and 5.2 seconds.
+server-soundboard-review = Review sound
+server-soundboard-name = Name
+server-soundboard-add = Add to server
+server-soundboard-cancel = Cancel
+server-soundboard-server-sounds = Server sounds
+server-soundboard-sound-count = { $count } sounds
+server-soundboard-empty = No sounds yet
+server-soundboard-no-sounds = This server has no available sounds.
+server-soundboard-unavailable = Unavailable
+activity-search-browse = Browse activities
+activity-search-title = Browse activities
+activity-search-description = Find embedded activities available in Discord's catalog.
+activity-search-placeholder = Search activities
+activity-search-button = Search
+activity-search-loading-error = Activity search is unavailable right now.
+activity-search-no-results = No matching activities were returned.
+activity-search-verified = Verified
+activity-search-read-only = This catalog is read-only. Starting activities is not available yet.
+channel-nsfw-label = NSFW
 # Context: preview
 server-settings-preview-established = Established
 # Context: preview
@@ -3400,6 +3426,8 @@ settings-activity-settings-share-game-activity = Share game activity
 settings-quests-page-quest-home = Quest Home
 settings-quests-open-discord-quest-home = Open Discord Quest Home
 settings-quests-availability-and-rewards-are-managed-in-discord = Quest availability, progress, and rewards are managed by Discord.
+settings-quests-progress-unavailable = Progress unavailable from Discord.
+settings-quests-read-only-note = Quest data is read from Discord. Enrollment and reward claims are not supported yet.
 settings-quests-open-discord = Open Discord
 settings-quests-open-discord-and-choose-discover-then-quests = In Discord, choose Discover, then Quests. Quest availability depends on your account and region.
 # Context: activity_settings
@@ -3438,6 +3466,18 @@ settings-activity-status-updating = Updating Discord's activity sharing setting�
 settings-activity-status-request-failed = Could not request the setting change. Try again.
 # Context: activity_settings
 settings-activity-current-game = Current Game
+# Context: activity_settings
+settings-activity-viviette = Viviette
+# Context: activity_settings
+settings-activity-viviette-description = Open the bundled Windows companion for music and video activity.
+# Context: activity_settings
+settings-activity-open-viviette = Open Viviette
+# Context: activity_settings
+settings-activity-viviette-opened = Viviette is opening.
+# Context: activity_settings
+settings-activity-viviette-missing = Viviette is not present in this Evita installation.
+# Context: activity_settings
+settings-activity-viviette-failed = Evita could not open Viviette.
 # Context: activity_settings
 settings-activity-now-playing = Now Playing!
 # Context: activity_settings

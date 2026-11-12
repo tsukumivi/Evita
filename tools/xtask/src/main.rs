@@ -280,6 +280,9 @@ fn package() -> Result<(), String> {
 	// `release.yml` archives every top-level entry in dist, so never carry stale
 	// files from a previous package into a new update ZIP.
 	prepare_output_directory(&root)?;
+	if cfg!(windows) {
+		build_viviette(&root)?;
+	}
 	let exe = if cfg!(windows) { "evita.exe" } else { "evita" };
 	let destination = if cfg!(target_os = "macos") {
 		let app = root.join("Evita.app/Contents");
@@ -421,6 +424,33 @@ fn package() -> Result<(), String> {
 		std::path::Path::new("assets/licenses/dependencies"),
 		&resources.join("licenses/dependencies"),
 	)?;
+	if cfg!(windows) {
+		let viviette_licenses = resources.join("licenses/viviette");
+		std::fs::create_dir_all(&viviette_licenses).map_err(|error| error.to_string())?;
+		std::fs::copy(
+			"apps/viviette/UPSTREAM-LICENSE-MIT",
+			viviette_licenses.join("UPSTREAM-LICENSE-MIT"),
+		)
+		.map_err(|error| error.to_string())?;
+		copy_directory(
+			std::path::Path::new("apps/viviette/licenses"),
+			&viviette_licenses.join("dependencies"),
+		)?;
+		let font_licenses = viviette_licenses.join("fonts");
+		std::fs::create_dir_all(&font_licenses).map_err(|error| error.to_string())?;
+		for entry in std::fs::read_dir("apps/viviette/internal/server/fonts")
+			.map_err(|error| error.to_string())?
+		{
+			let entry = entry.map_err(|error| error.to_string())?;
+			let path = entry.path();
+			if path.extension().is_some_and(|extension| extension == "txt")
+				&& entry.file_name().to_string_lossy().ends_with(".OFL.txt")
+			{
+				std::fs::copy(&path, font_licenses.join(entry.file_name()))
+					.map_err(|error| error.to_string())?;
+			}
+		}
+	}
 	for file in [
 		"README.md",
 		"LICENSE-MIT",
@@ -478,6 +508,49 @@ fn package() -> Result<(), String> {
 			.map_err(|e| e.to_string())?
 			.len()
 	);
+	Ok(())
+}
+
+fn build_viviette(root: &std::path::Path) -> Result<(), String> {
+	let host = rust_host()?;
+	let arch = match host.split('-').next().unwrap_or_default() {
+		"x86_64" => "amd64",
+		"aarch64" => "arm64",
+		_ => {
+			return Err(format!(
+				"Unsupported Viviette Windows host architecture: {host}"
+			));
+		}
+	};
+	let ldflags = format!(
+		"-s -w -H=windowsgui -X viviette/internal/version.Version={}",
+		env!("CARGO_PKG_VERSION")
+	);
+	let root = if root.is_absolute() {
+		root.to_owned()
+	} else {
+		std::env::current_dir()
+			.map_err(|error| error.to_string())?
+			.join(root)
+	};
+	let executable = root.join("Viviette.exe");
+	let status = Command::new("go")
+		.args(["build", "-mod=readonly", "-trimpath", "-ldflags"])
+		.arg(ldflags)
+		.arg("-o")
+		.arg(&executable)
+		.arg("./cmd/viviette")
+		.current_dir("apps/viviette")
+		.env("GOOS", "windows")
+		.env("GOARCH", arch)
+		.env("CGO_ENABLED", "0")
+		.status()
+		.map_err(|_| {
+			"Go 1.27.1 or newer is required to build the Windows Viviette companion.".to_owned()
+		})?;
+	if !status.success() || !executable.is_file() {
+		return Err("Building the Windows Viviette companion failed.".into());
+	}
 	Ok(())
 }
 
@@ -575,6 +648,23 @@ fn main() -> ExitCode {
 					])
 				})
 				.and_then(|_| run(&["test", "--workspace", "--locked"]))
+				.and_then(|_| {
+					if cfg!(windows) {
+						run_tool(
+							"go",
+							&[
+								"-C",
+								"apps/viviette",
+								"test",
+								"-mod=readonly",
+								"./...",
+								"-count=1",
+							],
+						)
+					} else {
+						Ok(())
+					}
+				})
 				.and_then(|_| run(&["check", "-p", "evita", "--no-default-features", "--locked"]))
 				.and_then(|_| policy()),
 			"policy" => policy(),
@@ -630,6 +720,7 @@ mod tests {
 		// Cargo alias entry is conditional on the GNU toolchain import table.
 		const RELEASE_ROOT: &[&str] = &[
 			"evita.exe",
+			"Viviette.exe",
 			"install-notifications.ps1",
 			"LICENSE-APACHE",
 			"LICENSE-MIT",

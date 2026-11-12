@@ -21,6 +21,31 @@ const MAX_PICKER_ROWS: usize = 200;
 impl MessagingUi {
 	pub(super) fn registered_games_settings(&mut self, ui: &mut egui::Ui, demo: bool) {
 		let p = design::palette(ui);
+		if cfg!(windows) && !demo {
+			heading(ui, "settings-activity-viviette");
+			design::card(ui, |ui| {
+				ui.label(
+					RichText::new(tr("settings-activity-viviette-description"))
+						.size(14.0)
+						.color(p.muted),
+				);
+				if ui.button(tr("settings-activity-open-viviette")).clicked() {
+					self.launch_viviette_requested = true;
+					self.viviette_launch_status = None;
+				}
+				if let Some(status) = self.viviette_launch_status {
+					let key = match status {
+						crate::VivietteLaunchStatus::Opened => "settings-activity-viviette-opened",
+						crate::VivietteLaunchStatus::Missing => {
+							"settings-activity-viviette-missing"
+						}
+						crate::VivietteLaunchStatus::Failed => "settings-activity-viviette-failed",
+					};
+					ui.label(RichText::new(tr(key)).size(13.0).color(p.muted));
+				}
+			});
+			design::divider(ui);
+		}
 		heading(ui, "settings-activity-current-game");
 		ui.add_space(4.0);
 		let running = self.running_game.clone();

@@ -123,6 +123,11 @@ jobs:
       - uses: dtolnay/rust-toolchain@1.98.1
         with:
           components: rustfmt, clippy
+      - uses: actions/setup-go@v6.0.0
+        if: runner.os == 'Windows'
+        with:
+          go-version-file: apps/viviette/go.mod
+          cache-dependency-path: apps/viviette/go.sum
       - name: Install NSIS
         if: runner.os == 'Windows'
         run: choco install nsis --no-progress -y

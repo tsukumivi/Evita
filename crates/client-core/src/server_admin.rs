@@ -28,6 +28,7 @@ pub struct View {
 	pub guild: Option<Id>,
 	pub emojis: Option<Emojis>,
 	pub stickers: Option<Stickers>,
+	pub soundboard: Option<model::server_admin::Soundboard>,
 	pub members: Option<Members>,
 	pub query: Query,
 	pub pending: bool,
@@ -210,6 +211,62 @@ impl State {
 	pub fn can_open_sticker_settings(&self, guild: Id) -> bool {
 		self.guild_permission(guild, p::MANAGE_GUILD_EXPRESSIONS)
 			|| self.guild_permission(guild, p::CREATE_GUILD_EXPRESSIONS)
+	}
+	pub fn can_open_soundboard_settings(&self, guild: Id) -> bool {
+		self.guild_permission(guild, p::MANAGE_GUILD_EXPRESSIONS)
+			|| self.guild_permission(guild, p::CREATE_GUILD_EXPRESSIONS)
+	}
+	pub fn can_create_guild_soundboard(&self, guild: Id) -> bool {
+		self.guild_permission(guild, p::CREATE_GUILD_EXPRESSIONS)
+	}
+	pub fn can_read_soundboard(&self, guild: Id, channel: Option<Id>) -> bool {
+		if self.can_open_soundboard_settings(guild) {
+			return true;
+		}
+		channel
+			.or_else(|| {
+				self.voice
+					.active
+					.as_ref()
+					.filter(|call| call.guild == Some(guild))
+					.map(|call| call.channel)
+			})
+			.is_some_and(|channel| {
+				self.voice.active.as_ref().is_some_and(|call| {
+					call.channel == channel
+						&& call.guild == Some(guild)
+						&& matches!(
+							call.phase,
+							crate::voice::Phase::Connected | crate::voice::Phase::Waiting
+						) && !call.muted && !call.deafened
+						&& !call.server_muted
+						&& !call.server_deafened
+				}) && self.can_speak(channel)
+					&& self.permission(channel, p::USE_SOUNDBOARD) == Some(true)
+			})
+	}
+	pub fn can_play_guild_soundboard(&self, guild: Id, channel: Id, sound: Id) -> bool {
+		self.voice.active.as_ref().is_some_and(|call| {
+			call.channel == channel
+				&& call.guild == Some(guild)
+				&& call.phase == crate::voice::Phase::Connected
+				&& !call.muted
+				&& !call.deafened
+				&& !call.server_muted
+				&& !call.server_deafened
+		}) && self.can_speak(channel)
+			&& self.permission(channel, p::USE_SOUNDBOARD) == Some(true)
+			&& self.server_admin.guild == Some(guild)
+			&& self
+				.server_admin
+				.soundboard
+				.as_ref()
+				.is_some_and(|catalog| {
+					catalog.guild == guild
+						&& catalog.items.iter().any(|item| {
+							item.id == sound && item.available && item.guild_id == Some(guild)
+						})
+				})
 	}
 	pub fn can_create_guild_sticker(&self, guild: Id) -> bool {
 		self.guild_permission(guild, p::CREATE_GUILD_EXPRESSIONS)
@@ -437,6 +494,13 @@ impl State {
 				self.can_edit_guild_emoji(guild, *id)
 			}
 			Action::LoadStickers => self.can_open_sticker_settings(guild),
+			Action::LoadSoundboard { channel } => self.can_read_soundboard(guild, *channel),
+			Action::CreateSoundboard { .. } => self.can_create_guild_soundboard(guild),
+			Action::PlaySoundboard {
+				channel,
+				sound,
+				source_guild,
+			} => *source_guild == guild && self.can_play_guild_soundboard(guild, *channel, *sound),
 			Action::CreateSticker { .. } => self.can_create_guild_sticker(guild),
 			Action::EditSticker { id, .. } | Action::DeleteSticker { id } => {
 				self.can_edit_guild_sticker(guild, *id)
@@ -478,6 +542,16 @@ impl State {
 				description.shrink_to_fit();
 				tags.shrink_to_fit();
 				filename.shrink_to_fit();
+				content_type.shrink_to_fit();
+				file.shrink_to_fit();
+			}
+			Action::CreateSoundboard {
+				name,
+				content_type,
+				file,
+				..
+			} => {
+				name.shrink_to_fit();
 				content_type.shrink_to_fit();
 				file.shrink_to_fit();
 			}
@@ -532,6 +606,9 @@ impl State {
 		if let Action::CreateEmoji { image, .. } = &mut retained {
 			*image = String::new();
 		} else if let Action::CreateSticker { file, .. } = &mut retained {
+			file.clear();
+			file.shrink_to_fit();
+		} else if let Action::CreateSoundboard { file, .. } = &mut retained {
 			file.clear();
 			file.shrink_to_fit();
 		} else if let Action::Roles(
@@ -632,6 +709,24 @@ impl State {
 					) && !self.can_open_member_settings(event.guild)
 			} else if action.emoji() {
 				!self.can_open_emoji_settings(event.guild)
+			} else if action.soundboard() {
+				match action {
+					Action::LoadSoundboard { channel } => {
+						!self.can_read_soundboard(event.guild, *channel)
+					}
+					Action::CreateSoundboard { .. } => {
+						!self.can_create_guild_soundboard(event.guild)
+					}
+					Action::PlaySoundboard {
+						channel,
+						sound,
+						source_guild,
+					} => {
+						*source_guild != event.guild
+							|| !self.can_play_guild_soundboard(event.guild, *channel, *sound)
+					}
+					_ => true,
+				}
 			} else if action.sticker() {
 				!match action {
 					Action::LoadStickers => self.can_open_sticker_settings(event.guild),
@@ -804,6 +899,17 @@ impl State {
 						_ => false,
 					}
 			}
+			(Some(Action::LoadSoundboard { .. }), Outcome::Soundboard(catalog)) => {
+				catalog.guild == event.guild
+			}
+			(Some(Action::CreateSoundboard { name, .. }), Outcome::Soundboard(catalog)) => {
+				catalog.guild == event.guild
+					&& catalog
+						.items
+						.iter()
+						.any(|sound| sound.guild_id == Some(event.guild) && sound.name == *name)
+			}
+			(Some(Action::PlaySoundboard { .. }), Outcome::SoundboardPlayed) => true,
 			_ => false,
 		};
 		if !expected {
@@ -850,6 +956,8 @@ impl State {
 				});
 				self.server_admin.stickers = Some(page);
 			}
+			Outcome::Soundboard(catalog) => self.server_admin.soundboard = Some(catalog),
+			Outcome::SoundboardPlayed => self.status = "Soundboard sound sent",
 			Outcome::Members(page) => {
 				if let Some(enabled) = page.show_in_channel_list {
 					if self.server_members_shortcuts.len() < 4000
@@ -985,6 +1093,7 @@ impl State {
 			Some(
 				Action::LoadEmojis
 					| Action::LoadStickers
+					| Action::LoadSoundboard { .. }
 					| Action::Invites(model::server_invites::Action::Load)
 					| Action::Integrations(model::server_integrations::Action::Load { .. })
 					| Action::LoadMembers(_)
@@ -1325,5 +1434,50 @@ mod sticker_tests {
 				Id(6)
 			);
 		}
+	}
+}
+
+#[cfg(test)]
+mod soundboard_voice_permission_tests {
+	use super::*;
+
+	#[test]
+	fn guild_sound_cannot_be_sent_without_an_active_voice_call() {
+		let guild = Id(10);
+		let mut state = State::default();
+		state.server_admin.guild = Some(guild);
+		state.server_admin.soundboard = Some(model::server_admin::Soundboard {
+			guild,
+			items: vec![model::server_admin::SoundboardSound {
+				id: Id(30),
+				guild_id: Some(guild),
+				name: "Wave".into(),
+				volume: 100,
+				emoji_id: None,
+				emoji_name: None,
+				available: true,
+				user: None,
+			}],
+		});
+
+		assert!(!state.can_play_guild_soundboard(guild, Id(20), Id(30)));
+		state.voice.active = Some(crate::voice::Call {
+			channel: Id(20),
+			guild: Some(guild),
+			connected_at: None,
+			channel_started_at: None,
+			server_muted: false,
+			server_deafened: false,
+			request: 1,
+			phase: crate::voice::Phase::Waiting,
+			muted: false,
+			deafened: false,
+			participants: vec![],
+			camera: false,
+			watching: None,
+			error: None,
+			reconnecting: None,
+		});
+		assert!(!state.can_play_guild_soundboard(guild, Id(20), Id(30)));
 	}
 }

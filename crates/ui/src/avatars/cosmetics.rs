@@ -162,7 +162,7 @@ impl Avatars {
 				if let Some((used, _)) = self.textures.get_mut(&animated) {
 					*used = Instant::now();
 				}
-				if let Some(frame) = self.advance_animation(ui.ctx(), &animated, true) {
+				if let Some(frame) = self.advance_animation(ui.ctx(), &animated, true, None) {
 					texture = Some(frame);
 				}
 			} else if !self.no_animations.contains(&animated) {
@@ -315,7 +315,7 @@ impl Avatars {
 					} else {
 						local.min(total - 1)
 					};
-					animation.seek(ui.ctx(), Duration::from_millis(local))
+					animation.seek(ui.ctx(), Duration::from_millis(local), None)
 				}
 				_ => {
 					// Idle frames were released; decode them again from the disk cache.

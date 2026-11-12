@@ -219,11 +219,16 @@ fn quest_text(ui: &mut egui::Ui, quest: &model::Quest, colors: design::Palette) 
 		if !quest.description.is_empty() {
 			ui.add(egui::Label::new(&quest.description).wrap());
 		}
-		ui.label(
-			RichText::new(&quest.progress)
-				.size(12.0)
-				.color(colors.muted),
-		);
+		if let Some(percent) = quest.progress_percent {
+			ui.add(egui::ProgressBar::new(percent as f32 / 100.0).text(&quest.progress));
+		} else {
+			let progress = if quest.progress.is_empty() {
+				crate::i18n::translate_if_key("settings-quests-progress-unavailable")
+			} else {
+				quest.progress.clone()
+			};
+			ui.label(RichText::new(progress).size(12.0).color(colors.muted));
+		}
 	});
 }
 
@@ -1379,6 +1384,11 @@ impl MessagingUi {
 			});
 		});
 		ui.add_space(12.0);
+		design::hint(
+			ui,
+			&crate::i18n::translate_if_key("settings-quests-read-only-note"),
+		);
+		ui.add_space(8.0);
 		if state.quests.loading {
 			ui.horizontal(|ui| {
 				ui.add(egui::Spinner::new());

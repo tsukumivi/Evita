@@ -1,0 +1,393 @@
+//go:build windows
+
+package config
+
+import (
+	"os"
+	"path/filepath"
+	"reflect"
+	"slices"
+	"testing"
+)
+
+func TestDefaultsUseVivietteAsDiscordAppName(t *testing.T) {
+	cfg := Defaults()
+	if cfg.Discord.AppName != "Viviette" {
+		t.Fatalf("Discord.AppName = %q, want %q", cfg.Discord.AppName, "Viviette")
+	}
+}
+
+func TestDefaultsUseBundledDiscordClientID(t *testing.T) {
+	cfg := Defaults()
+	if cfg.Discord.ClientID != "1556599139436077056" {
+		t.Fatalf("Discord.ClientID = %q, want bundled Viviette app ID", cfg.Discord.ClientID)
+	}
+}
+
+func TestLoadMigratesEmptyDiscordClientIDToBundledDefault(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "cadence.toml")
+	data := []byte("[discord]\nclient_id = \"\"\n")
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Discord.ClientID != "1556599139436077056" {
+		t.Fatalf("Discord.ClientID = %q, want bundled Viviette app ID", cfg.Discord.ClientID)
+	}
+}
+
+func TestLoadPreservesCustomDiscordClientID(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "cadence.toml")
+	data := []byte("[discord]\nclient_id = \"987654321098765432\"\n")
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Discord.ClientID != "987654321098765432" {
+		t.Fatalf("Discord.ClientID = %q, want custom ID", cfg.Discord.ClientID)
+	}
+}
+
+func TestLoadMigratesLegacyDiscordAppName(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "cadence.toml")
+	data := []byte("[discord]\napp_name = \"Viviette\"\n")
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Discord.AppName != "Viviette" {
+		t.Fatalf("Discord.AppName = %q, want %q", cfg.Discord.AppName, "Viviette")
+	}
+}
+
+func TestLoadPreservesCustomDiscordAppName(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "cadence.toml")
+	data := []byte("[discord]\napp_name = \"My Music App\"\n")
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Discord.AppName != "My Music App" {
+		t.Fatalf("Discord.AppName = %q, want %q", cfg.Discord.AppName, "My Music App")
+	}
+}
+
+func TestDefaultsUseResponsiveCadence(t *testing.T) {
+	cfg := Defaults()
+	if cfg.Sources.PollMS != 1000 || cfg.Presence.TrackDebounceMS != 500 || cfg.Presence.MinUpdateSecs != 5 {
+		t.Fatalf("cadence = poll %d ms, debounce %d ms, update %d s; want 1000/500/5", cfg.Sources.PollMS, cfg.Presence.TrackDebounceMS, cfg.Presence.MinUpdateSecs)
+	}
+	cfg.Presence.MinUpdateSecs = 1
+	cfg.Sources.PollMS = 10
+	cfg.normalize()
+	if cfg.Presence.MinUpdateSecs != 5 || cfg.Sources.PollMS != 500 {
+		t.Fatalf("unsafe cadence not bounded: %+v / %+v", cfg.Presence, cfg.Sources)
+	}
+	if cfg.Discord.SmallImage == "" || cfg.Buttons.VivietteURL != "https://github.com/tsukumivi/Evita" {
+		t.Fatalf("portable presentation defaults missing: %+v / %+v", cfg.Discord, cfg.Buttons)
+	}
+}
+
+func TestNewConfigBlocksNonMusicButExistingChoicesSurvive(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "cadence.toml")
+	c, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(c.Sources.Blocked) != len(defaultBlocked) || c.Sources.Blocked[0] != "browser" || c.Sources.Blocked[1] != "generic" {
+		t.Fatalf("new blocks = %v", c.Sources.Blocked)
+	}
+
+	for _, fixture := range []string{"[sources]\nblocked = []\n", "[sources]\nblocked = [\"SPOTIFY\", \"custom.app\"]\n"} {
+		if err := os.WriteFile(path, []byte(fixture), 0600); err != nil {
+			t.Fatal(err)
+		}
+		c, err := Load(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(c.Sources.Blocked, []string{"youtube", "youtube_tabs", "twitch"}) && !reflect.DeepEqual(c.Sources.Blocked, []string{"SPOTIFY", "custom.app", "youtube", "youtube_tabs", "twitch"}) {
+			t.Fatalf("existing choices overwritten: %v", c.Sources.Blocked)
+		}
+	}
+
+	if err := os.WriteFile(path, []byte("[sources]\npoll_ms = 2000\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	c, err = Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(c.Sources.Blocked, []string{"youtube", "youtube_tabs", "twitch"}) {
+		t.Fatalf("pre-existing config was re-blocked: %v", c.Sources.Blocked)
+	}
+
+	c.Sources.Blocked = []string{}
+	if err := Save(c, path); err != nil {
+		t.Fatal(err)
+	}
+	reloaded, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(reloaded.Sources.Blocked) != 0 {
+		t.Fatalf("explicit empty choice lost on save: %v", reloaded.Sources.Blocked)
+	}
+}
+
+func TestReloadReportsUnchangedConfig(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "cadence.toml")
+	if err := Save(Defaults(), path); err != nil {
+		t.Fatal(err)
+	}
+	holder, err := NewHolder(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	changed, err := holder.Reload()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changed {
+		t.Fatal("Reload() reported an unchanged config as changed")
+	}
+}
+
+func TestSourceMigration(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "old.toml")
+	if err := os.WriteFile(path, []byte("[sources]\norder = [\"generic\", \"spotifyapi\", \"browser\", \"spotify\", \"applemusic\"]\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	c, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"generic", "spotifyapi", "youtubemusic", "browser", "spotify", "applemusic"}
+	if !reflect.DeepEqual(c.Sources.Order, want) || !reflect.DeepEqual(c.Sources.Known, ToggleKeys) || !reflect.DeepEqual(c.Sources.Blocked, []string{"youtube", "youtube_tabs", "twitch"}) {
+		t.Fatalf("migration: %+v", c.Sources)
+	}
+	before := c.Sources
+	c.normalize()
+	c.normalize()
+	if !reflect.DeepEqual(before, c.Sources) {
+		t.Fatalf("not idempotent: %+v", c.Sources)
+	}
+	c.Sources.Blocked = nil
+	if err := Save(c, path); err != nil {
+		t.Fatal(err)
+	}
+	c, err = Load(path)
+	if err != nil || len(c.Sources.Blocked) != 0 {
+		t.Fatalf("re-enabled source blocked: %v %v", c, err)
+	}
+	if !reflect.DeepEqual(Defaults().Sources.Known, ToggleKeys) {
+		t.Fatal("defaults missing known keys")
+	}
+	for _, tc := range []struct{ order, want []string }{
+		{[]string{"spotify", "generic", "custom"}, []string{"spotify", "generic", "applemusic", "spotifyapi", "youtubemusic", "browser"}}, // unknown entries are dropped
+		{[]string{"youtubemusic", "browser"}, []string{"youtubemusic", "browser", "applemusic", "spotify", "spotifyapi", "generic"}},
+	} {
+		c := Defaults()
+		c.Sources.Known = nil
+		c.Sources.Order = tc.order
+		c.normalize()
+		if !reflect.DeepEqual(c.Sources.Order, tc.want) {
+			t.Fatalf("insertion without browser: %v", c.Sources.Order)
+		}
+	}
+}
+
+func TestSourceMigrationReviewFixtures(t *testing.T) {
+	for _, tc := range []struct {
+		name, fixture  string
+		order, blocked []string
+	}{
+		{
+			name: "legacy custom order and explicit blocks",
+			fixture: `order = ["generic", "spotifyapi", "browser", "spotify", "applemusic"]
+blocked = ["SPOTIFY", "custom.app"]`,
+			order:   []string{"generic", "spotifyapi", "youtubemusic", "browser", "spotify", "applemusic"},
+			blocked: []string{"SPOTIFY", "custom.app", "youtube", "youtube_tabs", "twitch"},
+		},
+		{
+			name: "existing duplicates are not multiplied",
+			fixture: `order = ["applemusic", "spotify", "spotifyapi", "youtubemusic", "youtubemusic", "browser", "generic"]
+blocked = ["browser", "browser"]
+known = ["applemusic", "spotify", "spotifyapi", "youtubemusic", "youtubemusic", "browser", "generic"]`,
+			order:   []string{"applemusic", "spotify", "spotifyapi", "youtubemusic", "browser", "generic"},
+			blocked: []string{"browser", "browser", "youtube", "youtube_tabs", "twitch"},
+		},
+		{
+			name: "unknown order entry",
+			fixture: `order = ["generic", "spotifyapi", "custom", "browser", "spotify", "applemusic"]
+blocked = []`,
+			order:   []string{"generic", "spotifyapi", "youtubemusic", "browser", "spotify", "applemusic"},
+			blocked: []string{"youtube", "youtube_tabs", "twitch"},
+		},
+		{
+			name: "case and space order variant",
+			fixture: `order = ["generic", " Spotify ", "browser", "spotify", "applemusic", "spotifyapi"]
+blocked = []`,
+			order:   []string{"generic", "spotify", "youtubemusic", "browser", "applemusic", "spotifyapi"},
+			blocked: []string{"youtube", "youtube_tabs", "twitch"},
+		},
+		{
+			name: "only unknown order entries",
+			fixture: `order = ["custom", "other"]
+blocked = []`,
+			order:   OrderSources,
+			blocked: []string{"youtube", "youtube_tabs", "twitch"},
+		},
+		{
+			name: "known music missing from order",
+			fixture: `order = ["generic", "spotifyapi", "browser", "spotify", "applemusic"]
+blocked = []
+known = ["applemusic", "spotify", "spotifyapi", "youtubemusic", "browser", "generic"]`,
+			order:   []string{"generic", "spotifyapi", "youtubemusic", "browser", "spotify", "applemusic"},
+			blocked: []string{"youtube", "youtube_tabs", "twitch"},
+		},
+		{
+			name: "case variant legacy blocks",
+			fixture: `order = ["applemusic", "spotify", "spotifyapi", "browser", "generic"]
+blocked = ["YouTube", " Browser ", "GENERIC"]
+known = []`,
+			order:   []string{"applemusic", "spotify", "spotifyapi", "youtubemusic", "browser", "generic"},
+			blocked: []string{"YouTube", " Browser ", "GENERIC", "youtube_tabs", "twitch"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "legacy.toml")
+			if err := os.WriteFile(path, []byte("[sources]\n"+tc.fixture+"\n"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			c, err := Load(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for i := 0; i < 3; i++ {
+				seen := make(map[string]bool, len(OrderSources))
+				if len(c.Sources.Order) != len(OrderSources) {
+					t.Fatalf("normalization %d: order length = %d", i, len(c.Sources.Order))
+				}
+				for _, source := range c.Sources.Order {
+					if !slices.Contains(OrderSources, source) || seen[source] {
+						t.Fatalf("normalization %d: invalid order %v", i, c.Sources.Order)
+					}
+					seen[source] = true
+				}
+				if !reflect.DeepEqual(c.Sources.Order, tc.order) || !reflect.DeepEqual(c.Sources.Blocked, tc.blocked) || !reflect.DeepEqual(c.Sources.Known, ToggleKeys) {
+					t.Fatalf("normalization %d: %+v", i, c.Sources)
+				}
+				c.normalize()
+			}
+		})
+	}
+}
+
+func TestCommitThreeTabsMigration(t *testing.T) {
+	c := Defaults()
+	c.Sources.Known = slices.DeleteFunc(slices.Clone(ToggleKeys), func(key string) bool { return key == "youtube_tabs" })
+	c.Sources.Blocked = []string{"youtube"}
+	c.normalize()
+	c.normalize()
+	if !reflect.DeepEqual(c.Sources.Blocked, []string{"youtube", "youtube_tabs"}) {
+		t.Fatal(c.Sources.Blocked)
+	}
+	c.Sources.Blocked = nil
+	c.normalize()
+	if len(c.Sources.Blocked) != 0 {
+		t.Fatal("reblocked enabled tabs")
+	}
+}
+
+func TestLoadNormalizesPanelMotion(t *testing.T) {
+	if Defaults().UI.Motion != DefaultMotion {
+		t.Fatalf("default motion = %q, want %q", Defaults().UI.Motion, DefaultMotion)
+	}
+	for raw, want := range map[string]string{"": DefaultMotion, "slow": DefaultMotion, " Reduced ": "reduced", "full": "full", "system": "system"} {
+		path := filepath.Join(t.TempDir(), "cadence.toml")
+		if err := os.WriteFile(path, []byte("[ui]\nmotion = \""+raw+"\"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		cfg, err := Load(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cfg.UI.Motion != want {
+			t.Errorf("motion %q loaded as %q, want %q", raw, cfg.UI.Motion, want)
+		}
+	}
+}
+
+func TestLoadNormalizesPanelTheme(t *testing.T) {
+	if Defaults().UI.Theme != DefaultTheme {
+		t.Fatalf("default theme = %q, want %q", Defaults().UI.Theme, DefaultTheme)
+	}
+	for raw, want := range map[string]string{
+		"":                 DefaultTheme,
+		"neon":             DefaultTheme,
+		"ao-ava":           DefaultTheme,
+		" Ava ":            "ava",
+		"residual-light":   "astra-light",
+		"residual":         "astra",
+		"panel":            DefaultTheme,
+		"mariyaholic-98":   "mariyaholic-98",
+		"../../etc/passwd": DefaultTheme,
+	} {
+		path := filepath.Join(t.TempDir(), "cadence.toml")
+		if err := os.WriteFile(path, []byte("[ui]\ntheme = \""+raw+"\"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		cfg, err := Load(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cfg.UI.Theme != want {
+			t.Errorf("theme %q loaded as %q, want %q", raw, cfg.UI.Theme, want)
+		}
+	}
+}
+
+func TestLoadNormalizesPanelLanguage(t *testing.T) {
+	if Defaults().UI.Language != DefaultLanguage {
+		t.Fatalf("default language = %q, want %q", Defaults().UI.Language, DefaultLanguage)
+	}
+	for raw, want := range map[string]string{"": DefaultLanguage, "fr": DefaultLanguage, "ja-JP": DefaultLanguage, " JA ": "ja", "en": "en", "System": "system"} {
+		path := filepath.Join(t.TempDir(), "cadence.toml")
+		if err := os.WriteFile(path, []byte("[ui]\nlanguage = \""+raw+"\"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		cfg, err := Load(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cfg.UI.Language != want {
+			t.Errorf("language %q loaded as %q, want %q", raw, cfg.UI.Language, want)
+		}
+	}
+	// A config written before the setting existed follows Windows.
+	path := filepath.Join(t.TempDir(), "cadence.toml")
+	if err := os.WriteFile(path, []byte("[ui]\ntheme = \"pine\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if cfg, err := Load(path); err != nil || cfg.UI.Language != DefaultLanguage {
+		t.Fatalf("missing language loaded as %v, %v", cfg, err)
+	}
+}

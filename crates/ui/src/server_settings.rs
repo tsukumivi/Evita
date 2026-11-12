@@ -7,6 +7,8 @@ use model::{
 	server_settings::{Edit, Settings, Trait},
 };
 
+type ServerSoundboardResult = Result<Option<(String, String, Vec<u8>, u16)>, &'static str>;
+
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
 enum Page {
 	#[default]
@@ -15,6 +17,7 @@ enum Page {
 	Safety,
 	Emoji,
 	Stickers,
+	Soundboard,
 	Members,
 	Roles,
 	Invites,
@@ -27,6 +30,7 @@ impl Page {
 			Self::Profile | Self::Engagement | Self::Safety => state.can_manage_guild(guild),
 			Self::Emoji => state.can_open_emoji_settings(guild),
 			Self::Stickers => state.can_open_sticker_settings(guild),
+			Self::Soundboard => state.can_open_soundboard_settings(guild),
 			Self::Members => state.can_open_member_settings(guild),
 			Self::Roles => state.can_open_role_settings(guild),
 			Self::Invites => state.can_open_invite_settings(guild),
@@ -41,6 +45,7 @@ impl Page {
 			Self::Safety => "server-settings-page-safety",
 			Self::Emoji => "server-settings-page-emoji",
 			Self::Stickers => "server-settings-page-stickers",
+			Self::Soundboard => "server-settings-page-soundboard",
 			Self::Members => "server-settings-page-members",
 			Self::Roles => "server-settings-page-roles",
 			Self::Invites => "server-settings-page-invites",
@@ -71,6 +76,7 @@ pub(super) struct Editor {
 	emoji_picker: crate::emoji_picker::Picker,
 	pub(super) admin: crate::server_admin::Admin,
 	stickers: crate::server_stickers::StickersUi,
+	soundboard: crate::server_soundboard::SoundboardUi,
 	roles: crate::server_roles::RolesUi,
 	invites: crate::server_invites::InvitesUi,
 	integrations: crate::server_integrations::IntegrationsUi,
@@ -150,6 +156,8 @@ impl MessagingUi {
 			Page::Members
 		} else if page == "stickers" {
 			Page::Stickers
+		} else if page == "soundboard" {
+			Page::Soundboard
 		} else {
 			Page::Emoji
 		};
@@ -172,6 +180,8 @@ impl MessagingUi {
 			self.server_settings.invites.load(state, guild)
 		} else if page == Page::Stickers {
 			self.server_settings.stickers.load(state, guild)
+		} else if page == Page::Soundboard {
+			self.server_settings.soundboard.load(state, guild)
 		} else {
 			self.server_settings
 				.admin
@@ -200,6 +210,31 @@ impl MessagingUi {
 			&& self.server_settings.stickers.request == scope.2
 		{
 			self.server_settings.stickers.accept(ctx, result);
+		}
+	}
+	pub fn accepts_server_soundboard_upload(&self) -> bool {
+		self.server_settings.is_open() && self.server_settings.page == Page::Soundboard
+	}
+	pub fn take_server_soundboard_request(&mut self) -> Option<(u64, Id, u64)> {
+		let (generation, guild) = self.server_settings.scope?;
+		if !self.accepts_server_soundboard_upload()
+			|| !self.server_settings.soundboard.take_request()
+		{
+			return None;
+		}
+		self.server_soundboard_sequence = self.server_soundboard_sequence.wrapping_add(1);
+		self.server_settings.soundboard.request = self.server_soundboard_sequence;
+		Some((generation, guild, self.server_soundboard_sequence))
+	}
+	pub fn accept_server_soundboard(
+		&mut self,
+		scope: (u64, Id, u64),
+		result: ServerSoundboardResult,
+	) {
+		if self.server_settings.scope == Some((scope.0, scope.1))
+			&& self.server_settings.soundboard.request == scope.2
+		{
+			self.server_settings.soundboard.accept(result);
 		}
 	}
 	pub fn queue_server_emoji_drop(&mut self, paths: Vec<std::path::PathBuf>) {
@@ -233,6 +268,7 @@ impl MessagingUi {
 				|| self.server_settings.icon_pending)
 			|| self.server_settings.admin.has_changes()
 			|| self.server_settings.stickers.has_changes()
+			|| self.server_settings.soundboard.has_changes()
 			|| self.server_settings.roles.has_changes()
 			|| self.server_settings.invites.busy()
 			|| self.server_settings.integrations.has_changes()
@@ -248,6 +284,9 @@ impl MessagingUi {
 			}
 			if state.can_open_sticker_settings(guild) {
 				return self.preview_server_admin(state, guild, "stickers");
+			}
+			if state.can_open_soundboard_settings(guild) {
+				return self.preview_server_admin(state, guild, "soundboard");
 			}
 			if state.can_open_integration_settings(guild) {
 				return self.preview_server_admin(state, guild, "integrations");
@@ -327,6 +366,7 @@ impl Editor {
 		if self.integrations.has_changes()
 			|| self.roles.has_changes()
 			|| self.invites.busy()
+			|| self.soundboard.has_changes()
 			|| self.dirty()
 			|| self.admin.has_changes()
 			|| state.server_admin.saving
@@ -370,6 +410,7 @@ impl Editor {
 			|| !(state.can_manage_guild(guild)
 				|| state.can_open_emoji_settings(guild)
 				|| state.can_open_sticker_settings(guild)
+				|| state.can_open_soundboard_settings(guild)
 				|| state.can_open_member_settings(guild)
 				|| state.can_open_role_settings(guild)
 				|| state.can_open_integration_settings(guild)
@@ -398,6 +439,8 @@ impl Editor {
 				Page::Emoji
 			} else if state.can_open_sticker_settings(guild) {
 				Page::Stickers
+			} else if state.can_open_soundboard_settings(guild) {
+				Page::Soundboard
 			} else if state.can_open_member_settings(guild) {
 				Page::Members
 			} else if state.can_open_integration_settings(guild) {
@@ -407,6 +450,7 @@ impl Editor {
 			};
 			self.admin = crate::server_admin::Admin::default();
 			self.stickers = crate::server_stickers::StickersUi::default();
+			self.soundboard = crate::server_soundboard::SoundboardUi::default();
 			self.roles = crate::server_roles::RolesUi::default();
 			self.invites = crate::server_invites::InvitesUi::default();
 			self.integrations = crate::server_integrations::IntegrationsUi::default();
@@ -442,6 +486,11 @@ impl Editor {
 		}
 		if self.page == Page::Stickers
 			&& let Some(command) = self.stickers.load(state, guild)
+		{
+			commands.push(command);
+		}
+		if self.page == Page::Soundboard
+			&& let Some(command) = self.soundboard.load(state, guild)
 		{
 			commands.push(command);
 		}
@@ -517,6 +566,7 @@ impl Editor {
 				|| state.server_settings.saving
 				|| self.admin.has_changes()
 				|| self.stickers.has_changes()
+				|| self.soundboard.has_changes()
 				|| self.roles.has_changes()
 				|| self.integrations.has_changes()
 				|| self.invites.busy()
@@ -577,12 +627,13 @@ impl Editor {
 		avatars: &mut Avatars,
 		commands: &mut Vec<Command>,
 	) {
-		const PAGES: [Page; 10] = [
+		const PAGES: [Page; 11] = [
 			Page::Profile,
 			Page::Engagement,
 			Page::Safety,
 			Page::Emoji,
 			Page::Stickers,
+			Page::Soundboard,
 			Page::Members,
 			Page::Roles,
 			Page::Invites,
@@ -615,6 +666,9 @@ impl Editor {
 				}
 				if page == Page::Emoji
 					|| (page == Page::Stickers && !Page::Emoji.allowed(state, guild))
+					|| (page == Page::Soundboard
+						&& !Page::Emoji.allowed(state, guild)
+						&& !Page::Stickers.allowed(state, guild))
 					|| matches!(page, Page::Members | Page::Integrations | Page::AuditLog)
 					|| (page == Page::Roles && !Page::Members.allowed(state, guild))
 				{
@@ -627,7 +681,7 @@ impl Editor {
 							"server-settings-show-moderation"
 						} else if page == Page::Integrations {
 							"server-settings-show-apps"
-						} else if matches!(page, Page::Emoji | Page::Stickers) {
+						} else if matches!(page, Page::Emoji | Page::Stickers | Page::Soundboard) {
 							"server-settings-show-expression"
 						} else {
 							"server-settings-show-people"
@@ -841,6 +895,10 @@ impl Editor {
 			}
 			Page::Stickers => {
 				self.stickers.show(ui, state, guild, avatars, commands);
+				return;
+			}
+			Page::Soundboard => {
+				self.soundboard.show(ui, state, guild, commands);
 				return;
 			}
 			Page::Emoji | Page::Members => {

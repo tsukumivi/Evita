@@ -1,8 +1,12 @@
 # Evita brand assets
 
-Evita's own application mark: a speech bubble carrying an S-shaped wave, in the icy
-blue-to-indigo brand gradient. These files are Evita design assets, not Apple, Discord or any
-other vendor's branding, and no third-party font is embedded in them.
+Evita's platform application mark is a speech bubble carrying an S-shaped wave, in the icy
+blue-to-indigo brand gradient. The SVG and platform icon files below retain that mark. No
+third-party font is embedded in them.
+
+`evita-app.png` is the circular, transparent-background in-app mark supplied by the project
+owner. It is used by the Evita icon in the client UI; the platform installer icons below still
+use the Evita vector artwork.
 
 - `evita.svg` — full-colour gradient mark on its rounded plate; the master vector source.
 - `evita-flat.svg` — flat (non-gradient) variant for small or low-colour contexts.

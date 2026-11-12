@@ -6,6 +6,8 @@ pub struct Quest {
 	pub title: String,
 	pub description: String,
 	pub progress: String,
+	/// Rounded completion percentage when Discord returns a current and target count.
+	pub progress_percent: Option<u8>,
 	pub image: Option<String>,
 }
 
@@ -17,6 +19,7 @@ impl Quest {
 			&& self.title.len() <= 256
 			&& self.description.len() <= 1024
 			&& self.progress.len() <= 128
+			&& self.progress_percent.is_none_or(|percent| percent <= 100)
 			&& self.image.as_ref().is_none_or(|url| {
 				url.len() <= 2048
 					&& (url.starts_with("https://cdn.discordapp.com/")

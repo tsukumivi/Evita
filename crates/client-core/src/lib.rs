@@ -1,4 +1,5 @@
 //! Single UI-thread state owner. Adapters deliver generation-tagged typed events.
+pub mod activity_search;
 pub mod application_commands;
 pub mod archives;
 pub mod auth;
@@ -78,6 +79,10 @@ pub const COMMAND_SLOTS: usize = 16; // ordinary commands <=16 KiB; bulk DM sett
 pub enum Command {
 	Quests {
 		request: u64,
+	},
+	ActivitySearch {
+		request: u64,
+		query: String,
 	},
 	Polls(polls::Request),
 	StickerPacks,
@@ -465,6 +470,10 @@ pub enum Event {
 		request: u64,
 		result: Result<Vec<model::Quest>, auth::Failure>,
 	},
+	ActivitySearch {
+		request: u64,
+		result: Result<Vec<model::application_search::Application>, auth::Failure>,
+	},
 	Polls(polls::Event),
 	StickerEntitlement {
 		user: Id,
@@ -815,6 +824,7 @@ pub struct State {
 	pub profile_cosmetics: model::CosmeticPreferences,
 	pub own_profile: profile::OwnProfile,
 	pub quests: quests::Quests,
+	pub activity_search: activity_search::ActivitySearch,
 	pub badge_editor: profile::BadgeEditor,
 	pub invites: invites::Cache,
 	pub invite_join: invites::Join,
@@ -1052,6 +1062,7 @@ impl Default for State {
 			profile_cosmetics: Default::default(),
 			own_profile: Default::default(),
 			quests: quests::Quests::default(),
+			activity_search: activity_search::ActivitySearch::default(),
 			badge_editor: Default::default(),
 			invites: Default::default(),
 			invite_join: Default::default(),
@@ -2124,6 +2135,11 @@ impl State {
 				self.quests.apply(*request, Err(auth::Failure::Capacity));
 				return;
 			}
+			Command::ActivitySearch { request, .. } => {
+				self.activity_search
+					.apply(*request, Err(auth::Failure::Capacity));
+				return;
+			}
 			Command::ApplicationCommands {
 				channel, request, ..
 			} => {
@@ -2363,6 +2379,11 @@ impl State {
 		}
 		if let Command::Quests { request } = command {
 			self.quests.apply(request, Err(auth::Failure::Capacity));
+			return;
+		}
+		if let Command::ActivitySearch { request, .. } = command {
+			self.activity_search
+				.apply(request, Err(auth::Failure::Capacity));
 			return;
 		}
 		if let Command::Edit {
@@ -2878,6 +2899,10 @@ impl State {
 				self.quests.apply(request, result);
 				Ok(())
 			}
+			Event::ActivitySearch { request, result } => {
+				self.activity_search.apply(request, result);
+				Ok(())
+			}
 			Event::Startup(_) => {
 				unreachable!("startup is applied atomically before ordinary events")
 			}
@@ -3354,6 +3379,11 @@ impl State {
 					}
 					if let Patch::Value(kind) = patch.kind {
 						channel.kind = kind;
+					}
+					match patch.nsfw {
+						Patch::Value(nsfw) => channel.nsfw = Some(nsfw),
+						Patch::Null => channel.nsfw = None,
+						Patch::Absent => {}
 					}
 					if let Patch::Value(count) = patch.message_count {
 						channel.message_count = Some(count);
@@ -4212,6 +4242,7 @@ impl State {
 				self.server_admin.revoke_audit_access();
 			}
 			if !self.can_open_emoji_settings(guild)
+				&& !self.can_read_soundboard(guild, None)
 				&& !self.can_open_member_settings(guild)
 				&& !self.can_open_role_settings(guild)
 				&& !self.can_open_integration_settings(guild)
@@ -4222,6 +4253,9 @@ impl State {
 			} else {
 				if !self.can_open_emoji_settings(guild) {
 					self.server_admin.emojis = None;
+				}
+				if !self.can_read_soundboard(guild, None) {
+					self.server_admin.soundboard = None;
 				}
 				if !self.can_open_member_settings(guild) {
 					self.server_admin.members = None;
@@ -4606,6 +4640,18 @@ impl Event {
 				Self::Quests {
 					result: Ok(items), ..
 				} => items.iter().map(model::Quest::bytes).sum(),
+				Self::ActivitySearch {
+					result: Ok(items), ..
+				} => {
+					items.capacity() * size_of::<model::application_search::Application>()
+						+ items
+							.iter()
+							.map(|application| {
+								application.bytes()
+									- size_of::<model::application_search::Application>()
+							})
+							.sum::<usize>()
+				}
 				Self::Invite { code, result } => {
 					code.capacity() + result.as_ref().map_or(0, |embed| embed.bytes())
 				}
@@ -4784,6 +4830,7 @@ mod tests {
 				guild: None,
 				parent_id: None,
 				kind: 1,
+				nsfw: None,
 				name: "Synthetic DM".into(),
 				position: 0,
 				recipients: vec![],
@@ -4867,6 +4914,7 @@ mod tests {
 				guild: None,
 				parent_id: None,
 				kind: 1,
+				nsfw: None,
 				name: "Synthetic DM".into(),
 				position: 0,
 				recipients: vec![],
@@ -4921,6 +4969,7 @@ mod tests {
 				guild: None,
 				parent_id: None,
 				kind: 1,
+				nsfw: None,
 				name: "Synthetic DM".into(),
 				position: 0,
 				recipients: vec![],
@@ -5049,6 +5098,7 @@ mod tests {
 				guild: None,
 				parent_id: None,
 				kind: 1,
+				nsfw: None,
 				name: "Synthetic DM".into(),
 				position: 0,
 				recipients: vec![],
@@ -5186,6 +5236,7 @@ mod tests {
 						name: "Synthetic".into(),
 						position: id as i32,
 						parent_id: None,
+						nsfw: None,
 						recipients: vec![],
 						last_message: None,
 						icon: None,
@@ -5398,6 +5449,7 @@ mod tests {
 				guild: Some(Id(10)),
 				parent_id: None,
 				kind: 0,
+				nsfw: None,
 				name: "Original".into(),
 				position: 7,
 				recipients: vec![],
@@ -5450,6 +5502,7 @@ mod tests {
 					parent_id: Patch::Absent,
 					position: Patch::Absent,
 					kind: Patch::Absent,
+					nsfw: model::Patch::Absent,
 					message_count: Patch::Absent,
 					tags: Patch::Absent,
 				}),
@@ -5558,6 +5611,7 @@ mod tests {
 				guild: None,
 				parent_id: None,
 				kind: 1,
+				nsfw: None,
 				name: "Synthetic reaction conversation".into(),
 				position: 0,
 				recipients: vec![],
@@ -5998,6 +6052,7 @@ mod tests {
 				position: 7,
 				name: "Synthetic channel".into(),
 				kind: 0,
+				nsfw: None,
 				recipients: vec![],
 				icon: None,
 				member_list_id: None,
@@ -6017,6 +6072,7 @@ mod tests {
 					parent_id: Patch::Null,
 					position: Patch::Value(0),
 					kind: Patch::Absent,
+					nsfw: model::Patch::Absent,
 					message_count: Patch::Absent,
 					tags: Patch::Absent,
 				}),
@@ -6037,6 +6093,7 @@ mod tests {
 					parent_id: Patch::Absent,
 					position: Patch::Absent,
 					kind: Patch::Value(4),
+					nsfw: model::Patch::Absent,
 					message_count: Patch::Absent,
 					tags: Patch::Absent,
 				}),
@@ -6057,6 +6114,7 @@ mod tests {
 						position: 0,
 						name: String::new(),
 						kind: 4,
+						nsfw: None,
 						recipients: vec![],
 						icon: None,
 						member_list_id: None,
@@ -6079,6 +6137,7 @@ mod tests {
 					guild: None,
 					parent_id: None,
 					kind: 1,
+					nsfw: None,
 					position: 0,
 					name: "Synthetic DM".into(),
 					recipients: vec![],
@@ -6273,6 +6332,7 @@ mod tests {
 				position: 0,
 				name: "DM".into(),
 				kind: 1,
+				nsfw: None,
 				recipients: vec![user.clone()],
 				icon: None,
 				member_list_id: None,
@@ -6410,6 +6470,7 @@ mod tests {
 			guild: Some(Id(10)),
 			parent_id: None,
 			kind: 2,
+			nsfw: None,
 			name: "Synthetic voice".into(),
 			position: 0,
 			recipients: vec![],
@@ -6503,6 +6564,7 @@ mod tests {
 				guild: None,
 				parent_id: None,
 				kind,
+				nsfw: None,
 				name: "Synthetic".into(),
 				position: 0,
 				recipients: vec![],
@@ -6662,6 +6724,7 @@ mod tests {
 						position: 0,
 						name: "Synthetic".into(),
 						kind: 1,
+						nsfw: None,
 						recipients: vec![],
 						icon: None,
 						member_list_id: None,

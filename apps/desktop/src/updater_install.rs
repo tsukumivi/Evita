@@ -963,7 +963,26 @@ $backup = Join-Path $stage 'previous'
 [IO.Directory]::CreateDirectory($backup) | Out-Null
 $moved = [Collections.Generic.List[string]]::new()
 $replaced = [Collections.Generic.List[string]]::new()
+$viviette = Join-Path $installation 'Viviette.exe'
+$vivietteWasRunning = $false
 try {
+  if (Test-Path -LiteralPath $viviette -PathType Leaf) {
+    $vivietteFullPath = [IO.Path]::GetFullPath($viviette)
+    $runningViviette = @(Get-CimInstance -ClassName Win32_Process -Filter "Name = 'Viviette.exe'" -ErrorAction SilentlyContinue |
+      Where-Object { $_.ExecutablePath -and [String]::Equals([IO.Path]::GetFullPath([string]$_.ExecutablePath), $vivietteFullPath, [StringComparison]::OrdinalIgnoreCase) })
+    if ($runningViviette.Count -gt 0) {
+      $vivietteWasRunning = $true
+      $stopper = Start-Process -FilePath $viviette -ArgumentList 'stop' -Wait -PassThru -WindowStyle Hidden
+      if ($stopper.ExitCode -ne 0) { throw 'Viviette did not stop cleanly.' }
+      $deadline = [DateTime]::UtcNow.AddSeconds(20)
+      do {
+        Start-Sleep -Milliseconds 250
+        $runningViviette = @(Get-CimInstance -ClassName Win32_Process -Filter "Name = 'Viviette.exe'" -ErrorAction SilentlyContinue |
+          Where-Object { $_.ExecutablePath -and [String]::Equals([IO.Path]::GetFullPath([string]$_.ExecutablePath), $vivietteFullPath, [StringComparison]::OrdinalIgnoreCase) })
+      } while ($runningViviette.Count -gt 0 -and [DateTime]::UtcNow -lt $deadline)
+      if ($runningViviette.Count -gt 0) { throw 'Viviette is still running.' }
+    }
+  }
   foreach ($name in $plan.files) {
     $source = Join-Path (Join-Path $stage 'package') $name
     if (!(Test-Path -LiteralPath $source)) { continue }
@@ -980,6 +999,9 @@ try {
     Set-ItemProperty -LiteralPath $uninstallKey -Name 'DisplayVersion' -Value ([string]$plan.version) -ErrorAction SilentlyContinue
   }
   Start-Process -FilePath (Join-Path $installation 'evita.exe') -WorkingDirectory $installation
+  if ($vivietteWasRunning) {
+    Start-Process -FilePath $viviette -WorkingDirectory $installation -ErrorAction SilentlyContinue
+  }
 } catch {
   foreach ($name in $replaced) {
     $target = Join-Path $installation $name
@@ -987,6 +1009,9 @@ try {
   }
   foreach ($name in $moved) {
     Move-Item -LiteralPath (Join-Path $backup $name) -Destination (Join-Path $installation $name) -ErrorAction SilentlyContinue
+  }
+  if ($vivietteWasRunning -and (Test-Path -LiteralPath $viviette -PathType Leaf)) {
+    Start-Process -FilePath $viviette -WorkingDirectory $installation -ErrorAction SilentlyContinue
   }
   Start-Process -FilePath (Join-Path $installation 'evita.exe') -WorkingDirectory $installation -ErrorAction SilentlyContinue
   exit 1

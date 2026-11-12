@@ -84,6 +84,19 @@ The native attachment video adapter also uses **symphonia-codec-aac 0.6.1**
 `assets/licenses/audio/source` and `assets/licenses/audio/PROVENANCE.md`, alongside
 the other Symphonia codecs, and ship through the same package copy step.
 
+Windows packages include **Viviette**, a separately launched music and video Rich
+Presence companion adapted from Yozora by Mariyaholic (MIT). The unmodified upstream
+MIT grant and copyright notice are retained at `apps/viviette/UPSTREAM-LICENSE-MIT`
+and ship under `licenses/viviette/`. The companion is built from source during Windows
+packaging; no prebuilt companion executable is committed. Its Go dependencies are
+BurntSushi/toml 1.4.0 (MIT), Microsoft/go-winio 0.6.2 (MIT), go-webview2
+`v0.0.0-20260205173254-56598839c808` (MIT), go-winloader
+`v0.0.0-20250406163304-c1995be93bd1` (ISC), and golang.org/x/sys 0.10.0 (BSD-3-Clause).
+Their unmodified license texts ship in `licenses/viviette/dependencies/`. Embedded
+panel fonts retain their individual SIL Open Font License notices in
+`licenses/viviette/fonts/`. Discord presence uses the upstream registered application
+identity until Evita configures an application ID it controls.
+
 The egui main experiment pins the egui/eframe ecosystem to upstream commit
 `4821fc54ae083ac516e137a61e70550330e55169` (version 0.36.2, MIT OR Apache-2.0).
 It adds unicode-properties 0.1.4 (MIT/Apache-2.0) and updates glifo to 0.3.0 and

@@ -409,6 +409,7 @@ impl Connection {
                 let mut gifs:Option<AbortTask>=None;
                 let mut gif_favorites:Option<AbortTask>=None;
                 let mut application_commands:Option<AbortTask>=None;
+                let mut activity_search:Option<AbortTask>=None;
                 let mut sticker_packs:Option<AbortTask>=None;
                 let mut sticker_detail:Option<AbortTask>=None;
                 let mut reaction_read:Option<AbortTask>=None;
@@ -524,6 +525,18 @@ impl Connection {
                                 application_commands=Some(AbortTask(tokio::spawn(async move {
                                     let event=api.execute(command).await;
                                     let failure=match &event {Event::ApplicationCommands{result:Err(f),..} if f.ends_session() && *f!=Failure::Capacity=>Some(*f),_=>None};
+                                    let error=emit(event).err().or(failure);
+                                    if let Some(error)=error {api.stop();let _=finished.send(Some(error));}
+                                    wake.request_repaint();
+                                })));
+                                continue;
+                            }
+                            if matches!(command,Command::ActivitySearch{..}) {
+                                drop(activity_search.take());
+                                let api=api.clone();let emit=emit.clone();let finished=finished.clone();let wake=wake.clone();
+                                activity_search=Some(AbortTask(tokio::spawn(async move {
+                                    let event=api.execute(command).await;
+                                    let failure=match &event {Event::ActivitySearch{result:Err(f),..} if f.ends_session() && *f!=Failure::Capacity=>Some(*f),_=>None};
                                     let error=emit(event).err().or(failure);
                                     if let Some(error)=error {api.stop();let _=finished.send(Some(error));}
                                     wake.request_repaint();
@@ -2654,6 +2667,7 @@ mod tests {
 				name: "Synthetic channel".into(),
 				icon: None,
 				kind: 0,
+				nsfw: None,
 				recipients: vec![],
 				member_list_id: None,
 				tags: None,
@@ -2960,6 +2974,7 @@ mod tests {
 					position: 0,
 					name: "Synthetic DM".into(),
 					kind,
+					nsfw: None,
 					recipients: vec![owner.clone()],
 					icon: None,
 					member_list_id: None,

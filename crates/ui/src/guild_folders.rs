@@ -984,6 +984,7 @@ mod tests {
 			guild: Some(Id(11)),
 			parent_id: None,
 			kind: 0,
+			nsfw: None,
 			position: 0,
 			name: "synthetic-unread".into(),
 			recipients: vec![],

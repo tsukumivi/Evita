@@ -2,6 +2,7 @@
 pub mod activity_sessions;
 pub mod activity_sharing;
 pub mod application_commands;
+pub mod application_search;
 pub mod archives;
 mod attachments;
 pub mod badges;
@@ -202,6 +203,8 @@ pub struct ChannelDto {
 	pub name: Option<String>,
 	#[serde(rename = "type")]
 	pub kind: u8,
+	#[serde(default)]
+	pub nsfw: Option<bool>,
 	/// An unreadable recipient is dropped without losing the conversation.
 	#[serde(default, deserialize_with = "lossy::recipients")]
 	pub recipients: Vec<UserDto>,
@@ -300,6 +303,7 @@ impl ChannelDto {
 				},
 			),
 			kind: self.kind,
+			nsfw: self.nsfw,
 			recipients,
 			member_list_id: None,
 			message_count: self.message_count,
@@ -321,6 +325,8 @@ pub struct ChannelPatchDto {
 	pub position: Patch<i32>,
 	#[serde(rename = "type", default)]
 	pub kind: Patch<u8>,
+	#[serde(default)]
+	pub nsfw: Patch<bool>,
 	#[serde(default)]
 	pub permission_overwrites: Patch<Vec<Overwrite>>,
 	#[serde(default)]
@@ -415,6 +421,7 @@ impl ChannelPatchDto {
 			name: self.name,
 			parent_id: self.parent_id,
 			position: self.position,
+			nsfw: self.nsfw,
 			tags: forum::patched_tags(
 				self.kind.clone(),
 				self.available_tags,
@@ -500,6 +507,26 @@ mod channel_tests {
 			assert!(decode::<ChannelDto>(br#"{"id":"3","type":0,"position":4294967296}"#).is_err());
 		}
 	}
+
+	#[test]
+	fn channel_age_restriction_decodes_and_updates_without_losing_absence() {
+		let channel = decode::<ChannelDto>(
+			br#"{"id":"3","guild_id":"1","type":0,"name":"adult","nsfw":true}"#,
+		)
+		.unwrap()
+		.into_model();
+		assert_eq!(channel.nsfw, Some(true));
+
+		let patch = decode::<ChannelPatchDto>(br#"{"id":"3","nsfw":true}"#)
+			.unwrap()
+			.into_model();
+		assert_eq!(patch.nsfw, Patch::Value(true));
+		let omitted = decode::<ChannelPatchDto>(br#"{"id":"3"}"#)
+			.unwrap()
+			.into_model();
+		assert_eq!(omitted.nsfw, Patch::Absent);
+	}
+
 	#[test]
 	fn ready_omits_obfuscated_channels_and_their_threads_without_inventing_child_permissions() {
 		let mut ready: Ready = decode(br#"{

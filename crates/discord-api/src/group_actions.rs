@@ -89,6 +89,7 @@ impl DiscordApi {
 			parent_id: Patch::Absent,
 			position: Patch::Absent,
 			kind: Patch::Absent,
+			nsfw: model::Patch::Absent,
 			message_count: Patch::Absent,
 			tags: Patch::Absent,
 		}))

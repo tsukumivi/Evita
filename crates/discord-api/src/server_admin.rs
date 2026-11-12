@@ -1,4 +1,5 @@
 use crate::{DiscordApi, Failure};
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use client_core::server_admin::Event;
 use discord_protocol::server_admin::{self as wire, MAX_WIRE};
 use model::{
@@ -47,6 +48,19 @@ impl DiscordApi {
 			.await?;
 		wire::stickers(&bytes, guild)
 			.map(Outcome::Stickers)
+			.map_err(|_| Failure::Protocol)
+	}
+	async fn admin_soundboard(&self, guild: Id) -> Result<Outcome, Failure> {
+		let bytes = self
+			.request_limited(
+				Method::GET,
+				&format!("/guilds/{guild}/soundboard-sounds"),
+				None,
+				discord_protocol::server_admin::MAX_WIRE,
+			)
+			.await?;
+		discord_protocol::server_admin::soundboard(&bytes, guild)
+			.map(Outcome::Soundboard)
 			.map_err(|_| Failure::Protocol)
 	}
 	async fn admin_member(
@@ -172,6 +186,62 @@ impl DiscordApi {
 				self.admin_emojis(guild).await.map_err(reconcile_failure)
 			}
 			Action::LoadStickers => self.admin_stickers(guild).await,
+			Action::LoadSoundboard { .. } => self.admin_soundboard(guild).await,
+			Action::CreateSoundboard {
+				name,
+				content_type,
+				file,
+				..
+			} => {
+				let sound = format!("data:{content_type};base64,{}", STANDARD.encode(file));
+				let bytes = self
+					.request_limited(
+						Method::POST,
+						&format!("/guilds/{guild}/soundboard-sounds"),
+						Some(json!({"name":name,"sound":sound,"volume":1.0})),
+						64 * 1024,
+					)
+					.await
+					.map_err(write_failure)?;
+				let created = discord_protocol::server_admin::soundboard_created(&bytes, guild)
+					.map_err(|_| Failure::Ambiguous)?;
+				if created.name != *name {
+					return Err(Failure::Ambiguous);
+				}
+				let catalog = self
+					.admin_soundboard(guild)
+					.await
+					.map_err(reconcile_failure)?;
+				let Outcome::Soundboard(catalog) = catalog else {
+					return Err(Failure::Ambiguous);
+				};
+				if !catalog
+					.items
+					.iter()
+					.any(|sound| sound.id == created.id && sound.name == *name)
+				{
+					return Err(Failure::Ambiguous);
+				}
+				Ok(Outcome::Soundboard(catalog))
+			}
+			Action::PlaySoundboard {
+				channel,
+				sound,
+				source_guild,
+			} => {
+				let _ = self
+					.request_limited(
+						Method::POST,
+						&format!("/channels/{channel}/send-soundboard-sound"),
+						Some(
+							json!({"sound_id":sound.to_string(),"source_guild_id":source_guild.to_string()}),
+						),
+						4096,
+					)
+					.await
+					.map_err(write_failure)?;
+				Ok(Outcome::SoundboardPlayed)
+			}
 			Action::CreateSticker {
 				name,
 				description,
