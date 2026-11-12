@@ -4242,7 +4242,7 @@ impl State {
 				self.server_admin.revoke_audit_access();
 			}
 			if !self.can_open_emoji_settings(guild)
-				&& !self.server_admin.can_read_soundboard(guild, None)
+				&& !self.can_read_soundboard(guild, None)
 				&& !self.can_open_member_settings(guild)
 				&& !self.can_open_role_settings(guild)
 				&& !self.can_open_integration_settings(guild)
@@ -4254,7 +4254,7 @@ impl State {
 				if !self.can_open_emoji_settings(guild) {
 					self.server_admin.emojis = None;
 				}
-				if !self.server_admin.can_read_soundboard(guild, None) {
+				if !self.can_read_soundboard(guild, None) {
 					self.server_admin.soundboard = None;
 				}
 				if !self.can_open_member_settings(guild) {
