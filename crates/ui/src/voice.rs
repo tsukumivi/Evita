@@ -2963,16 +2963,14 @@ impl MessagingUi {
 		let colors = design::palette(ui);
 		design::section(
 			ui,
-			&crate::i18n::translate("voice-voice-processing-controls-input-profile"),
-			Some(&crate::i18n::translate(
-				"voice-voice-processing-controls-applies-to-calls-and-your-local-microphone-test",
-			)),
+			"Powered by Crystal",
+			Some("Evita’s local voice processing uses RNNoise and WebRTC filters."),
 		);
 		for (profile, label, detail) in [
 			(
 				InputProfile::VoiceIsolation,
-				"Voice Isolation",
-				"RNNoise suppression, echo cancellation and automatic gain for speech.",
+				"Crystal Voice Isolation",
+				"Local RNNoise suppression, echo cancellation and automatic gain for speech.",
 			),
 			(
 				InputProfile::Studio,
@@ -3349,7 +3347,11 @@ impl MessagingUi {
 		let bar = ui.max_rect();
 		// A narrow stage sheds secondary controls (view toggles, device chevrons, then
 		// share/more) before anything overlaps; mute, camera and hang-up always stay.
-		let actions = 2.0 * 48.0;
+		let actions = if call_guild.is_some() {
+			3.0 * 48.0
+		} else {
+			2.0 * 48.0
+		};
 		let essential = 2.0 * 48.0 + BAR_GAP + HANG_UP;
 		let side = [watched.is_some(), focused, screen_focused]
 			.iter()
@@ -3473,6 +3475,68 @@ impl MessagingUi {
 		if actions_shown {
 			pill(&mut row, actions, |ui| {
 				self.screen_share_control(ui, state);
+				if let Some(guild) = call_guild {
+					let soundboard = control(
+						ui,
+						crate::icons::Icon::Soundboard,
+						48.0,
+						true,
+						STAGE_TEXT,
+						"Soundboard",
+						"Play a sound in this voice channel",
+					);
+					egui::Popup::menu(&soundboard)
+						.close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+						.show(|ui| {
+							ui.set_min_width(220.0);
+							ui.label("Soundboard");
+							let catalog = state
+								.server_admin
+								.soundboard
+								.as_ref()
+								.filter(|catalog| catalog.guild == guild);
+							if !state.can_read_soundboard(guild, Some(channel)) {
+								ui.weak("You don’t have permission to use the soundboard here.");
+							} else if let Some(catalog) = catalog {
+								if catalog.items.is_empty() {
+									ui.weak(crate::i18n::translate_if_key(
+										"server-soundboard-no-sounds",
+									));
+								}
+								for sound in catalog.items.iter().filter(|sound| sound.available) {
+									if ui
+										.add_enabled(
+											state.can_play_guild_soundboard(
+												guild, channel, sound.id,
+											) && !state.server_admin.pending,
+											egui::Button::new(format!(
+												"{}  {}",
+												sound.emoji_name.as_deref().unwrap_or("🔊"),
+												sound.name
+											)),
+										)
+										.clicked()
+									{
+										soundboard_action =
+											Some(model::server_admin::Action::PlaySoundboard {
+												channel,
+												sound: sound.id,
+												source_guild: guild,
+											});
+										ui.close();
+									}
+								}
+							} else if !state.server_admin.pending
+								&& ui.button("Load this server’s sounds").clicked()
+							{
+								soundboard_action =
+									Some(model::server_admin::Action::LoadSoundboard {
+										channel: Some(channel),
+									});
+								ui.close();
+							}
+						});
+				}
 				let more = control(
 					ui,
 					crate::icons::Icon::More,
@@ -3504,54 +3568,6 @@ impl MessagingUi {
 						{
 							self.activity_picker_open = true;
 							ui.close();
-						}
-						if let Some(guild) = call_guild {
-							ui.separator();
-							ui.label("Soundboard");
-							let catalog = state
-								.server_admin
-								.soundboard
-								.as_ref()
-								.filter(|catalog| catalog.guild == guild);
-							if let Some(catalog) = catalog {
-								if catalog.items.is_empty() {
-									ui.weak(crate::i18n::translate_if_key(
-										"server-soundboard-no-sounds",
-									));
-								}
-								for sound in catalog.items.iter().filter(|sound| sound.available) {
-									if ui
-										.add_enabled(
-											state.can_play_guild_soundboard(
-												guild, channel, sound.id,
-											) && !state.server_admin.pending,
-											egui::Button::new(format!(
-												"{}  {}",
-												sound.emoji_name.as_deref().unwrap_or("🔊"),
-												sound.name
-											)),
-										)
-										.clicked()
-									{
-										soundboard_action =
-											Some(model::server_admin::Action::PlaySoundboard {
-												channel,
-												sound: sound.id,
-												source_guild: guild,
-											});
-										ui.close();
-									}
-								}
-							} else if state.can_read_soundboard(guild, Some(channel))
-								&& !state.server_admin.pending
-								&& ui.button("Load this server’s sounds").clicked()
-							{
-								soundboard_action =
-									Some(model::server_admin::Action::LoadSoundboard {
-										channel: Some(channel),
-									});
-								ui.close();
-							}
 						}
 					});
 				if let Some(action) = soundboard_action
@@ -4253,16 +4269,16 @@ impl MessagingUi {
 					if card_action(
 						ui,
 						width,
-						crate::icons::Icon::Soundboard,
+						crate::icons::Icon::Waveform,
 						processing,
 						self.voice_processing.effective().suppression != NoiseSuppression::Off,
 						if self.voice_processing.effective().suppression != NoiseSuppression::Off {
-							"Turn off noise suppression"
+							"Turn off Crystal noise suppression"
 						} else {
-							"Turn on noise suppression"
+							"Turn on Crystal noise suppression"
 						},
 						if processing {
-							"Noise suppression reduces keyboard noise, breathing and fans locally."
+							"Powered by Crystal. Evita applies local RNNoise/WebRTC suppression; it does not use Krisp’s SDK."
 						} else {
 							"Noise suppression is unavailable in this build or preview."
 						},

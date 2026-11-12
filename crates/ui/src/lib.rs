@@ -252,6 +252,13 @@ struct ProfileImage {
 
 pub const DEFAULT_IDLE_TIMEOUT_SECS: u32 = 10 * 60;
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum VivietteLaunchStatus {
+	Opened,
+	Missing,
+	Failed,
+}
+
 #[derive(Default)]
 pub struct MessagingUi {
 	poll_creator: polls::Creator,
@@ -382,6 +389,9 @@ pub struct MessagingUi {
 	pub share_game_activity: bool,
 	pub own_game: Option<String>,
 	pub game_activity_status: &'static str,
+	/// Opens the packaged Windows Viviette companion from its settings card.
+	pub launch_viviette_requested: bool,
+	pub viviette_launch_status: Option<VivietteLaunchStatus>,
 	/// Edited on the Registered Games page; the desktop app persists and applies the list.
 	pub registered_games: Vec<model::registered_games::RegisteredGame>,
 	/// The game the local process scan reports while activity sharing is on.

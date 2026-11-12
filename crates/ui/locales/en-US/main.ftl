@@ -3467,6 +3467,18 @@ settings-activity-status-request-failed = Could not request the setting change. 
 # Context: activity_settings
 settings-activity-current-game = Current Game
 # Context: activity_settings
+settings-activity-viviette = Viviette
+# Context: activity_settings
+settings-activity-viviette-description = Open the bundled Windows companion for music and video activity.
+# Context: activity_settings
+settings-activity-open-viviette = Open Viviette
+# Context: activity_settings
+settings-activity-viviette-opened = Viviette is opening.
+# Context: activity_settings
+settings-activity-viviette-missing = Viviette is not present in this Evita installation.
+# Context: activity_settings
+settings-activity-viviette-failed = Evita could not open Viviette.
+# Context: activity_settings
 settings-activity-now-playing = Now Playing!
 # Context: activity_settings
 settings-activity-stop-detecting-current = Not this game? Stop detecting it.

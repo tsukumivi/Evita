@@ -470,6 +470,11 @@ with no audio recordings or remote processing. Quality, CPU cost, physical laten
 cross-platform behavior require owner-operated checks; this local implementation does
 not establish production readiness or superiority over Discord's processing.
 
+The **Crystal** label names Evita's existing local voice-processing controls. It is not the
+Krisp SDK, does not use Krisp models, and does not claim Krisp-equivalent noise removal. A
+Krisp SDK integration would still require a separate commercial license and a reviewed
+dependency/privacy assessment.
+
 ## Screen sharing
 
 In a connected call, select **Share your screen**, choose a display/window, then a resolution and frame rate, cursor visibility and optional **Share system audio**, then select **Share screen**. The screen button changes to **Stop sharing** while starting/sharing; it also remains available in the compact call controls. Call microphone controls remain independent. All presets are selectable without Nitro, but Discord acceptance and sustained frame rate are not guaranteed.

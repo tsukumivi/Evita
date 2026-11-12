@@ -1,0 +1,434 @@
+//go:build windows
+
+package server
+
+import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"path/filepath"
+	"reflect"
+	"strings"
+	"sync"
+	"testing"
+
+	"viviette/internal/config"
+	"viviette/internal/version"
+)
+
+func fixtureHandler(t *testing.T) (http.Handler, *config.Holder) {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "fixture.toml")
+	c := config.Defaults()
+	c.Sources.Blocked = []string{" BrOwSeR ", "custom.app", "SPOTIFY"}
+	c.Discord.Apps = map[string]string{"spotify": "synthetic-id"}
+	c.Discord.Names = map[string]string{"spotify": "Fixture"}
+	c.Template.State = "custom template"
+	c.Spotify.Market = "fixture-market"
+	if err := config.Save(c, path); err != nil {
+		t.Fatal(err)
+	}
+	h, err := config.NewHolder(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return Handler(Deps{Cfg: h, CfgPath: path, Token: "fixture-token"}), h
+}
+func request(h http.Handler, method, path, body string, header bool) *httptest.ResponseRecorder {
+	r := httptest.NewRequest(method, path, strings.NewReader(body))
+	if header {
+		r.Header.Set("X-Uika-Token", "fixture-token")
+	}
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	return w
+}
+func TestSourcesRejectInvalidBodiesWithoutChangingConfig(t *testing.T) {
+	h, cfg := fixtureHandler(t)
+	before := cfg.Get()
+	for _, body := range []string{`{}`, `null`, `{"enabled":null}`, `{"enabled":[]}`, `{"enabled":{"browser":null}}`, `{"enabled":{"browser":1}}`, `{"enabled":{"browser":"false"}}`, `{"enabled":{"unknown":false}}`, `{"enabled":{"Browser":false}}`, `{"enabled":{},"extra":true}`, `{"enabled":{}} {}`, `{"enabled":{}} trailing`, strings.Repeat(" ", 4097) + `{"enabled":{}}`} {
+		w := request(h, "POST", "/api/sources", body, true)
+		if w.Code != 400 && w.Code != 413 {
+			t.Errorf("accepted %q: %d", body[:min(len(body), 80)], w.Code)
+		}
+		loaded, err := config.Load(cfg.Path())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(loaded, before) || cfg.Get() != before {
+			t.Fatal("rejected request changed config")
+		}
+	}
+}
+func TestEmptyDashboardTokenFailsClosed(t *testing.T) {
+	h := Handler(Deps{})
+	for _, path := range []string{"/?t=", "/api/state?t=", "/api/sources?t="} {
+		w := request(h, "GET", path, "", false)
+		if w.Code != http.StatusUnauthorized {
+			t.Errorf("empty-token request %s returned %d", path, w.Code)
+		}
+	}
+}
+
+func TestSourcesAuthAndMethods(t *testing.T) {
+	h, _ := fixtureHandler(t)
+	for _, method := range []string{"GET", "POST"} {
+		if w := request(h, method, "/api/sources", `{"enabled":{}}`, false); w.Code != 401 {
+			t.Fatalf("unauthenticated %s=%d", method, w.Code)
+		}
+		for _, header := range []bool{false, true} {
+			path := "/api/sources"
+			if !header {
+				path += "?t=fixture-token"
+			}
+			if w := request(h, method, path, `{"enabled":{}}`, header); w.Code != 200 {
+				t.Fatalf("authenticated %s=%d", method, w.Code)
+			}
+		}
+	}
+	if w := request(h, "DELETE", "/api/sources", "", true); w.Code != 405 {
+		t.Fatalf("DELETE=%d", w.Code)
+	}
+}
+
+func TestConcurrentSourceUpdatesDoNotLoseWrites(t *testing.T) {
+	h, cfg := fixtureHandler(t)
+	var wg sync.WaitGroup
+	for _, source := range []string{"applemusic", "spotifyapi", "generic"} {
+		wg.Go(func() {
+			w := request(h, "POST", "/api/sources", `{"enabled":{"`+source+`":false}}`, true)
+			if w.Code != 200 {
+				t.Errorf("concurrent save %s: %d", source, w.Code)
+			}
+		})
+	}
+	wg.Wait()
+	loaded, err := config.Load(cfg.Path())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, source := range []string{"applemusic", "spotifyapi", "generic"} {
+		found := false
+		for _, block := range loaded.Sources.Blocked {
+			if block == source {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("lost update %s: %v", source, loaded.Sources.Blocked)
+		}
+	}
+	if !reflect.DeepEqual(loaded, cfg.Get()) {
+		t.Fatal("reload does not match saved config")
+	}
+}
+
+func TestDashboardSourceControls(t *testing.T) {
+	h, _ := fixtureHandler(t)
+	w := request(h, "GET", "/?t=fixture-token", "", false)
+	if w.Code != 200 {
+		t.Fatal(w.Code)
+	}
+	page := w.Body.String()
+	for _, source := range config.ToggleKeys {
+		if !strings.Contains(page, `id="source-`+source+`"`) || !strings.Contains(page, `for="source-`+source+`"`) {
+			t.Errorf("missing accessible checkbox for %s", source)
+		}
+	}
+	for _, marker := range []string{`type="checkbox"`, `id="source-save"`, `role="status"`, `/api/sources`, `method:"POST"`, `JSON.stringify({enabled, order:savedOrder})`} {
+		if !strings.Contains(page, marker) {
+			t.Errorf("missing working control %s", marker)
+		}
+	}
+
+	for _, marker := range []string{`id="source-order"`, `draggable`, `data.order || []`, `order:savedOrder`, "Priority ",
+		"The highest source that is playing wins", `id="appearance-open"`, `<dialog class="appearance"`} {
+		if !strings.Contains(page, marker) {
+			t.Errorf("missing hierarchy control %q", marker)
+		}
+	}
+}
+
+func TestDashboardButtonLinksRejectUnsafeSchemes(t *testing.T) {
+	if strings.Contains(uiHTML, "link.href = b.url") {
+		t.Fatal("dashboard assigns untrusted button URLs without a scheme check")
+	}
+	for _, marker := range []string{"safeButtonURL(b.url)", `u.protocol !== "http:"`, `u.protocol !== "https:"`} {
+		if !strings.Contains(uiHTML, marker) {
+			t.Errorf("missing button URL allowlist check %q", marker)
+		}
+	}
+}
+
+func TestDashboardSetsNonceCSPAndNoReferrer(t *testing.T) {
+	h, _ := fixtureHandler(t)
+	w := request(h, "GET", "/?t=fixture-token", "", false)
+	if w.Code != 200 {
+		t.Fatal(w.Code)
+	}
+	csp := w.Header().Get("Content-Security-Policy")
+	if csp == "" || strings.Contains(csp, "script-src 'unsafe-inline'") {
+		t.Fatalf("missing restrictive script policy: %q", csp)
+	}
+	page := w.Body.String()
+	start := strings.Index(page, `<script nonce="`)
+	if start < 0 {
+		t.Fatal("script element has no CSP nonce")
+	}
+	start += len(`<script nonce="`)
+	end := strings.Index(page[start:], `"`)
+	if end < 0 || !strings.Contains(csp, "'nonce-"+page[start:start+end]+"'") {
+		t.Fatalf("script nonce does not match policy: %q", csp)
+	}
+	if w.Header().Get("Referrer-Policy") != "no-referrer" {
+		t.Fatalf("referrer policy = %q", w.Header().Get("Referrer-Policy"))
+	}
+}
+
+func TestDashboardShowsAuthorFooter(t *testing.T) {
+	h, _ := fixtureHandler(t)
+	w := request(h, "GET", "/?t=fixture-token", "", false)
+	if w.Code != 200 {
+		t.Fatal(w.Code)
+	}
+	page := w.Body.String()
+	if !strings.Contains(page, "Made with love by") || !strings.Contains(page, `href="https://github.com/mariyaholic"`) {
+		t.Fatal("dashboard is missing the author footer link")
+	}
+}
+
+func TestSourcesPersistPartialChangesWithoutMutatingSnapshot(t *testing.T) {
+	h, cfg := fixtureHandler(t)
+	old := cfg.Get()
+	w := request(h, "GET", "/api/sources?t=fixture-token", "", false)
+	if w.Code != 200 {
+		t.Fatalf("GET status=%d body=%s", w.Code, w.Body.String())
+	}
+	var response struct {
+		Name    string
+		Enabled map[string]bool
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if response.Name != "Viviette" || len(response.Enabled) != len(config.ToggleKeys) || response.Enabled["browser"] || response.Enabled["spotify"] || !response.Enabled["applemusic"] {
+		t.Fatalf("state=%+v", response)
+	}
+	w = request(h, "POST", "/api/sources", `{"enabled":{"browser":true,"generic":false}}`, true)
+	if w.Code != 200 {
+		t.Fatalf("POST status=%d body=%s", w.Code, w.Body.String())
+	}
+	loaded, err := config.Load(cfg.Path())
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := *old
+	want.Sources.Blocked = []string{"custom.app", "SPOTIFY", "generic"}
+	if !reflect.DeepEqual(loaded, &want) || !reflect.DeepEqual(cfg.Get(), &want) {
+		t.Fatalf("lost unrelated settings: %+v", loaded)
+	}
+	if !reflect.DeepEqual(old.Sources.Blocked, []string{" BrOwSeR ", "custom.app", "SPOTIFY"}) {
+		t.Fatal("published snapshot mutated")
+	}
+	restarted, err := config.NewHolder(cfg.Path())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(restarted.Get(), &want) {
+		t.Fatal("restart lost source choices")
+	}
+}
+
+func TestYouTubeToggleAcceptedButNotPriority(t *testing.T) {
+	h, cfg := fixtureHandler(t)
+	for _, enabled := range []string{"true", "false"} {
+		w := request(h, "POST", "/api/sources", `{"enabled":{"youtube":`+enabled+`,"youtube_tabs":`+enabled+`}}`, true)
+		if w.Code != 200 {
+			t.Fatalf("toggle: %d %s", w.Code, w.Body.String())
+		}
+	}
+	w := request(h, "POST", "/api/sources", `{"order":["applemusic","spotify","spotifyapi","youtubemusic","browser","youtube"]}`, true)
+	if w.Code != 400 {
+		t.Fatalf("youtube priority accepted: %d", w.Code)
+	}
+	if len(cfg.Get().Sources.Order) != 6 {
+		t.Fatal("priority changed")
+	}
+}
+
+func TestAppearanceSavesKnownThemesOnly(t *testing.T) {
+	h, cfg := fixtureHandler(t)
+	if w := request(h, "GET", "/api/appearance", "", false); w.Code != 401 {
+		t.Fatalf("unauthenticated theme read = %d", w.Code)
+	}
+	w := request(h, "GET", "/api/appearance", "", true)
+	var got struct {
+		Theme   string   `json:"theme"`
+		Themes  []string `json:"themes"`
+		Motion  string   `json:"motion"`
+		Motions []string `json:"motions"`
+	}
+	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &got) != nil || got.Theme != config.DefaultTheme || !reflect.DeepEqual(got.Themes, config.Themes) || got.Motion != config.DefaultMotion || !reflect.DeepEqual(got.Motions, config.Motions) {
+		t.Fatalf("theme read = %d %s", w.Code, w.Body.String())
+	}
+	before := cfg.Get()
+	for _, body := range []string{`{}`, `null`, `{"theme":null}`, `{"theme":"neon"}`, `{"theme":"ao-ava"}`, `{"theme":"panel"}`, `{"theme":"AVA"}`, `{"theme":1}`, `{"theme":"ava","extra":true}`, `{"theme":"ava"} {}`, strings.Repeat(" ", 300) + `{"theme":"ava"}`,
+		`{"motion":null}`, `{"motion":"slow"}`, `{"motion":"Reduced"}`, `{"motion":false}`, `{"theme":"ava","motion":"slow"}`, `{"theme":"neon","motion":"reduced"}`} {
+		if w := request(h, "POST", "/api/appearance", body, true); w.Code != 400 {
+			t.Errorf("accepted %q: %d", body[:min(len(body), 60)], w.Code)
+		}
+		if cfg.Get() != before {
+			t.Fatal("rejected theme changed config")
+		}
+	}
+	w = request(h, "POST", "/api/appearance", `{"theme":"ava"}`, true)
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"theme":"ava"`) {
+		t.Fatalf("theme save = %d %s", w.Code, w.Body.String())
+	}
+	loaded, err := config.Load(cfg.Path())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.UI.Theme != "ava" || cfg.Get().UI.Theme != "ava" {
+		t.Fatalf("theme not persisted: file %q, holder %q", loaded.UI.Theme, cfg.Get().UI.Theme)
+	}
+	if loaded.Template.State != "custom template" || loaded.Spotify.Market != "fixture-market" || !reflect.DeepEqual(loaded.Sources.Blocked, before.Sources.Blocked) {
+		t.Fatal("theme save changed unrelated settings")
+	}
+	page := request(h, "GET", "/?t=fixture-token", "", false).Body.String()
+	if !strings.Contains(page, `<html lang="en" data-theme="ava" data-motion="system" data-language="system"`) {
+		t.Fatal("dashboard does not render the saved theme before scripts run")
+	}
+}
+
+func TestAppearanceSavesMotionWithoutTouchingTheme(t *testing.T) {
+	h, cfg := fixtureHandler(t)
+	if w := request(h, "POST", "/api/appearance", `{"theme":"ledger"}`, true); w.Code != 200 {
+		t.Fatalf("theme save = %d", w.Code)
+	}
+	for _, motion := range []string{"reduced", "full", "system", "reduced"} {
+		w := request(h, "POST", "/api/appearance", `{"motion":"`+motion+`"}`, true)
+		if w.Code != 200 || !strings.Contains(w.Body.String(), `"motion":"`+motion+`"`) || !strings.Contains(w.Body.String(), `"theme":"ledger"`) {
+			t.Fatalf("motion %s save = %d %s", motion, w.Code, w.Body.String())
+		}
+	}
+	loaded, err := config.Load(cfg.Path())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.UI.Motion != "reduced" || loaded.UI.Theme != "ledger" || cfg.Get().UI.Motion != "reduced" {
+		t.Fatalf("appearance not persisted: %+v", loaded.UI)
+	}
+	if w := request(h, "POST", "/api/appearance", `{"theme":"pine","motion":"full"}`, true); w.Code != 200 || cfg.Get().UI.Theme != "pine" || cfg.Get().UI.Motion != "full" {
+		t.Fatalf("combined save = %d %+v", w.Code, cfg.Get().UI)
+	}
+	page := request(h, "GET", "/?t=fixture-token", "", false).Body.String()
+	if !strings.Contains(page, `<html lang="en" data-theme="pine" data-motion="full"`) {
+		t.Fatal("dashboard does not render the saved motion mode before scripts run")
+	}
+}
+
+func TestDashboardOffersEveryMotionMode(t *testing.T) {
+	for _, id := range config.Motions {
+		if !strings.Contains(uiHTML, `name="motion" value="`+id+`"`) {
+			t.Errorf("motion mode %q has no picker option", id)
+		}
+	}
+	for _, marker := range []string{`html[data-motion="reduced"] *`, `html:not([data-motion="full"]) *`, `motionReduced()`} {
+		if !strings.Contains(uiHTML, marker) {
+			t.Errorf("missing motion-mode rule %q", marker)
+		}
+	}
+}
+
+func TestDashboardOffersEveryTheme(t *testing.T) {
+	for _, id := range config.Themes {
+		if !strings.Contains(uiHTML, `[data-theme="`+id+`"]`) || !strings.Contains(uiHTML, `name="theme" value="`+id+`"`) || !strings.Contains(uiHTML, `class="swatch" data-theme="`+id+`"`) {
+			t.Errorf("theme %q lacks a palette, picker option or swatch", id)
+		}
+	}
+	if got := strings.Count(uiHTML, `name="theme" value="`); got != len(config.Themes) {
+		t.Errorf("picker offers %d themes, config allows %d", got, len(config.Themes))
+	}
+}
+
+// The old whole-config POST decoded over defaults, so a partial body reset every other
+// setting. Nothing used it and it is gone; a stray request must not touch the file.
+func TestWholeConfigPostIsGone(t *testing.T) {
+	h, cfg := fixtureHandler(t)
+	before := cfg.Get()
+	for _, path := range []string{"/api/config", "/api/config?t=fixture-token"} {
+		request(h, "POST", path, `{"UI":{"Theme":"pine"}}`, true)
+		loaded, err := config.Load(cfg.Path())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(loaded, before) || cfg.Get() != before {
+			t.Fatalf("POST %s changed config", path)
+		}
+	}
+}
+
+func TestAppearanceSavesLanguageAllOrNothing(t *testing.T) {
+	h, cfg := fixtureHandler(t)
+	w := request(h, "GET", "/api/appearance", "", true)
+	if !strings.Contains(w.Body.String(), `"language":"system"`) || !strings.Contains(w.Body.String(), `"languages":["system","en","ja"]`) {
+		t.Fatalf("language read = %s", w.Body.String())
+	}
+	before := cfg.Get()
+	for _, body := range []string{`{"language":null}`, `{"language":"fr"}`, `{"language":"JA"}`, `{"language":"ja-JP"}`, `{"language":1}`,
+		`{"theme":"ava","language":"fr"}`, `{"language":"ja","motion":"slow"}`, `{"language":"ja","theme":"neon"}`} {
+		if w := request(h, "POST", "/api/appearance", body, true); w.Code != 400 {
+			t.Errorf("accepted %q: %d", body, w.Code)
+		}
+		if cfg.Get() != before {
+			t.Fatalf("rejected %q changed config", body)
+		}
+	}
+	w = request(h, "POST", "/api/appearance", `{"language":"ja"}`, true)
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"language":"ja"`) || !strings.Contains(w.Body.String(), `"theme":"viviette"`) {
+		t.Fatalf("language save = %d %s", w.Code, w.Body.String())
+	}
+	loaded, err := config.Load(cfg.Path())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.UI.Language != "ja" || cfg.Get().UI.Language != "ja" || loaded.UI.Theme != before.UI.Theme || loaded.Template.State != "custom template" {
+		t.Fatalf("language not persisted alone: %+v", loaded.UI)
+	}
+	page := request(h, "GET", "/?t=fixture-token", "", false).Body.String()
+	if !strings.Contains(page, `<html lang="ja" data-theme="viviette" data-motion="system" data-language="ja" data-version="`) {
+		t.Fatal("dashboard does not render the saved language before scripts run")
+	}
+	if w := request(h, "POST", "/api/appearance", `{"theme":"pine","language":"en"}`, true); w.Code != 200 || cfg.Get().UI.Theme != "pine" || cfg.Get().UI.Language != "en" {
+		t.Fatalf("combined save = %d %+v", w.Code, cfg.Get().UI)
+	}
+}
+
+func TestPageLangFollowsSettingThenBrowser(t *testing.T) {
+	for _, c := range []struct{ setting, accept, want string }{
+		{"ja", "en-US,en;q=0.9", "ja"},
+		{"en", "ja-JP", "en"},
+		{"system", "ja-JP,ja;q=0.9,en;q=0.8", "ja"},
+		{"system", "ja", "ja"},
+		{"system", "JA-jp;q=1", "ja"},
+		{"system", "en-GB,ja;q=0.5", "en"},
+		{"system", "jam", "en"},
+		{"system", "", "en"},
+	} {
+		if got := pageLang(c.setting, c.accept); got != c.want {
+			t.Errorf("pageLang(%q, %q) = %q, want %q", c.setting, c.accept, got, c.want)
+		}
+	}
+}
+
+func TestDashboardRendersVersion(t *testing.T) {
+	h, _ := fixtureHandler(t)
+	old := version.Version
+	t.Cleanup(func() { version.Version = old })
+	version.Version = "0.1.42"
+	page := request(h, "GET", "/?t=fixture-token", "", false).Body.String()
+	if !strings.Contains(page, `data-version="0.1.42"`) {
+		t.Fatal("dashboard does not carry the running version")
+	}
+}

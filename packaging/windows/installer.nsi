@@ -163,6 +163,32 @@ Function RegisterNotificationShortcut
   System::Store "l"
 FunctionEnd
 
+Function StopViviette
+  IfFileExists "$INSTDIR\Viviette.exe" 0 viviette_stopped
+  ClearErrors
+  ExecWait '"$INSTDIR\Viviette.exe" stop' $0
+  ${If} ${Errors}
+  ${OrIf} $0 != 0
+    MessageBox MB_OK|MB_ICONSTOP "Cannot close Viviette safely. Close it from its tray menu, then retry." /SD IDOK
+    SetErrorLevel 1
+    Abort
+  ${EndIf}
+  viviette_stopped:
+FunctionEnd
+
+Function un.StopViviette
+  IfFileExists "$INSTDIR\Viviette.exe" 0 un_viviette_stopped
+  ClearErrors
+  ExecWait '"$INSTDIR\Viviette.exe" stop' $0
+  ${If} ${Errors}
+  ${OrIf} $0 != 0
+    MessageBox MB_OK|MB_ICONSTOP "Cannot close Viviette safely. Close it from its tray menu, then retry." /SD IDOK
+    SetErrorLevel 1
+    Abort
+  ${EndIf}
+  un_viviette_stopped:
+FunctionEnd
+
 Function .onInit
   SetShellVarContext current
   ${If} ${RunningX64}
@@ -188,6 +214,8 @@ Function .onInit
       ${Break}
     ${EndIf}
   ${Loop}
+
+  Call StopViviette
 FunctionEnd
 
 Section "MainSection" SEC01
@@ -273,6 +301,8 @@ Function un.onInit
       ${Break}
     ${EndIf}
   ${Loop}
+
+  Call un.StopViviette
 FunctionEnd
 
 Section "Uninstall"
@@ -290,6 +320,7 @@ Section "Uninstall"
 
   ; Remove installed files
   Delete "$INSTDIR\${APP_EXE}"
+  Delete "$INSTDIR\Viviette.exe"
   Delete "$INSTDIR\README.md"
   Delete "$INSTDIR\LICENSE-MIT"
   Delete "$INSTDIR\LICENSE-APACHE"

@@ -59,6 +59,11 @@ jobs:
         run: cargo check --locked -p evita -p ui --all-targets --features evita/demo
       - name: Test offline typing with demo support
         run: cargo test --locked -p evita -p ui -p client-core -p discord-api --features evita/demo --lib --bins typing
+      - uses: actions/setup-go@v6.0.0
+        if: runner.os == 'Windows'
+        with:
+          go-version-file: apps/viviette/go.mod
+          cache-dependency-path: apps/viviette/go.sum
       - run: cargo xtask check
       - name: Windows installer version regression
         if: runner.os == 'Windows' && runner.arch == 'X64'

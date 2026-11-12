@@ -4,6 +4,7 @@ use std::{fs, path::Path};
 /// Keep this list shared by the packager and the in-app updater.
 pub const WINDOWS_FILES: &[&str] = &[
 	"evita.exe",
+	"Viviette.exe",
 	"README.md",
 	"LICENSE-MIT",
 	"LICENSE-APACHE",

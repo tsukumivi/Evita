@@ -2670,6 +2670,42 @@ impl Desktop {
 			}
 		}
 	}
+	/// Opens the companion shipped beside evita.exe. The companion remains a separate process
+	/// and owns its own settings and tray lifecycle.
+	fn sync_viviette(&mut self) {
+		if !self.messaging.launch_viviette_requested {
+			return;
+		}
+		self.messaging.launch_viviette_requested = false;
+		if self.fixture_only || self.state.demo {
+			return;
+		}
+		#[cfg(target_os = "windows")]
+		{
+			let executable = std::env::current_exe()
+				.ok()
+				.and_then(|path| path.parent().map(std::path::Path::to_path_buf))
+				.map(|directory| directory.join("Viviette.exe"));
+			match executable {
+				Some(executable) if executable.is_file() => {
+					let result = std::process::Command::new(&executable)
+						.current_dir(executable.parent().unwrap_or(std::path::Path::new(".")))
+						.spawn();
+					self.messaging.viviette_launch_status = Some(match result {
+						Ok(_) => ui::VivietteLaunchStatus::Opened,
+						Err(_) => ui::VivietteLaunchStatus::Failed,
+					});
+				}
+				_ => {
+					self.messaging.viviette_launch_status = Some(ui::VivietteLaunchStatus::Missing);
+				}
+			}
+		}
+		#[cfg(not(target_os = "windows"))]
+		{
+			self.messaging.viviette_launch_status = Some(ui::VivietteLaunchStatus::Missing);
+		}
+	}
 	/// Applies a log level, names the file in the page and reports a folder that cannot be written
 	/// instead of promising one. A machine with no resolvable data folder still gets a log: the
 	/// crate falls back to its own folder in the temporary directory and the page names it.
@@ -5341,6 +5377,7 @@ impl Desktop {
 		self.retry_history_clears();
 		self.sync_plaintext_login();
 		self.sync_diagnostics_log(ctx);
+		self.sync_viviette();
 		self.sync_diagnostics_save(ctx);
 		let mut results = Vec::new();
 		if let Some(store) = &mut self.store {
