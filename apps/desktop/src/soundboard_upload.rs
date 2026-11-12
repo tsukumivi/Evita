@@ -156,11 +156,11 @@ fn read(path: PathBuf, cancelled: &AtomicBool) -> Result<Prepared, &'static str>
 
 fn duration_ms(bytes: &[u8], extension: &str, cancelled: &AtomicBool) -> Result<u16, &'static str> {
 	use symphonia::core::{
-		codecs::{CODEC_ID_MP3, CODEC_ID_OPUS, CODEC_ID_VORBIS},
-		formats::{FormatOptions, TrackType},
+		codecs::audio::well_known::{CODEC_ID_MP3, CODEC_ID_OPUS, CODEC_ID_VORBIS},
+		common::Limit,
+		formats::{FormatOptions, TrackType, probe::Hint},
 		io::{MediaSourceStream, MediaSourceStreamOptions},
-		meta::{Limit, MetadataOptions},
-		probe::Hint,
+		meta::MetadataOptions,
 	};
 	let source = std::io::Cursor::new(bytes.to_vec());
 	let source = MediaSourceStream::new(Box::new(source), MediaSourceStreamOptions::default());
@@ -178,6 +178,7 @@ fn duration_ms(bytes: &[u8], extension: &str, cancelled: &AtomicBool) -> Result<
 	let parameters = track
 		.codec_params
 		.as_ref()
+		.and_then(|parameters| parameters.audio())
 		.ok_or("The chosen file contains no readable audio track")?;
 	if !matches!(
 		parameters.codec,
@@ -223,7 +224,10 @@ fn duration_ms(bytes: &[u8], extension: &str, cancelled: &AtomicBool) -> Result<
 	if cancelled.load(Ordering::Acquire) {
 		return Err("Sound preparation cancelled");
 	}
-	let millis = u64::try_from(duration_nanos.div_ceil(1_000_000))
+	let rounded_nanos = duration_nanos
+		.checked_add(999_999)
+		.ok_or("The chosen audio duration is invalid")?;
+	let millis = u64::try_from(rounded_nanos / 1_000_000)
 		.map_err(|_| "The chosen audio duration is invalid")?;
 	u16::try_from(millis).map_err(|_| "Soundboard sounds can be at most 5.2 seconds long")
 }
