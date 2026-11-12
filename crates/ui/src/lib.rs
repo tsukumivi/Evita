@@ -5976,7 +5976,7 @@ impl MessagingUi {
 		}
 		self.onboarding.show(&ctx, state, &mut commands);
 		if self.activity_picker_open {
-			eg_ui::Window::new(crate::i18n::translate_if_key("activity-search-title"))
+			egui::Window::new(crate::i18n::translate_if_key("activity-search-title"))
 				.id(egui::Id::new("activity-catalog-picker"))
 				.open(&mut self.activity_picker_open)
 				.default_width(560.0)
@@ -5987,7 +5987,7 @@ impl MessagingUi {
 					let response = ui.horizontal(|ui| {
 						let edit = ui.add_sized(
 							[ui.available_width() - 90.0, 32.0],
-							eg_ui::TextEdit::singleline(&mut self.activity_search_query).hint_text(
+							egui::TextEdit::singleline(&mut self.activity_search_query).hint_text(
 								crate::i18n::translate_if_key("activity-search-placeholder"),
 							),
 						);
@@ -6018,7 +6018,7 @@ impl MessagingUi {
 						ui.weak(crate::i18n::translate_if_key("activity-search-no-results"));
 					} else {
 						for activity in &state.activity_search.items {
-							eg_ui::Frame::group(ui.style()).show(ui, |ui| {
+							egui::Frame::group(ui.style()).show(ui, |ui| {
 								ui.horizontal(|ui| {
 									let icon = activity.icon.as_ref().map(|hash| {
 										format!("application-icon-{}-{hash}", activity.id)

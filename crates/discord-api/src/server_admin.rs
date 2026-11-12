@@ -90,7 +90,7 @@ impl DiscordApi {
 					}
 					VoiceChange::Mute(muted) => json!({"mute":muted}),
 				};
-				let _ = self
+				let bytes = self
 					.request_limited(
 						Method::PATCH,
 						&format!("/guilds/{guild}/members/{user}"),

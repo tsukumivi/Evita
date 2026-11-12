@@ -912,7 +912,9 @@ impl DiscordApi {
 					result: self
 						.request_limited(Method::GET, &path, None, 256 * 1024)
 						.await
-						.and_then(|bytes| application_search::parse(&bytes)),
+						.and_then(|bytes| {
+							application_search::parse(&bytes).map_err(|_| Failure::Protocol)
+						}),
 				}
 			}
 			Command::ApplicationCommands {

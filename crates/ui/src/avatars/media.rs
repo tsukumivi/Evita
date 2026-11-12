@@ -556,7 +556,7 @@ impl MediaLibrary {
 		Some(match &mut held.pixels {
 			Pixels::Still(still) => still.clone(),
 			Pixels::Playing { still, animation } => playing
-				.then(|| animation.advance(ctx))
+				.then(|| animation.advance(ctx, None))
 				.flatten()
 				.unwrap_or_else(|| still.clone()),
 		})
