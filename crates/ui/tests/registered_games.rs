@@ -12,8 +12,8 @@ fn frame(
 			screen_rect: Some(egui::Rect::from_min_size(
 				egui::Pos2::ZERO,
 				// Windows adds the Viviette companion card above these game sections.
-				// Keep enough room to exercise the page below it on every CI architecture.
-				egui::vec2(1120.0, 1200.0),
+				// Keep enough room to exercise every game row below it on every CI architecture.
+				egui::vec2(1120.0, 2000.0),
 			)),
 			events,
 			..Default::default()
