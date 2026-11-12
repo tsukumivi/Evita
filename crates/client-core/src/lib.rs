@@ -6582,7 +6582,6 @@ mod tests {
 				avatar: None,
 				webhook: false,
 				kind: Default::default(),
-				nsfw: None,
 				discriminator: 0,
 			};
 			for replacement in [None, Some(channel(4))] {

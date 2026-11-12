@@ -5977,7 +5977,7 @@ impl MessagingUi {
 		self.onboarding.show(&ctx, state, &mut commands);
 		if self.activity_picker_open {
 			egui::Window::new(crate::i18n::translate_if_key("activity-search-title"))
-				.id(egui::Id::new("activity-catalog-picker"))
+				.id(egui::Id::unique("activity-catalog-picker"))
 				.open(&mut self.activity_picker_open)
 				.default_width(560.0)
 				.default_height(520.0)

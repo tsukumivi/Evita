@@ -277,7 +277,6 @@ mod tests {
 				avatar: None,
 				webhook: false,
 				kind: Default::default(),
-				nsfw: None,
 				discriminator: 0,
 			}),
 			guilds: vec![
