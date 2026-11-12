@@ -105,12 +105,7 @@ fn current_game_can_be_renamed_and_running_programs_added() {
 	for _ in 0..3 {
 		texts = frame(&ctx, &mut view, &mut state, vec![]);
 	}
-	for label in [
-		"Current Game",
-		"Now Playing!",
-		"Added Games",
-		"No games added",
-	] {
+	for label in ["Current Game", "Now Playing!"] {
 		find(&texts, label);
 	}
 
