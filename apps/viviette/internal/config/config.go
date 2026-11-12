@@ -149,7 +149,7 @@ func Defaults() *Config {
 	c := &Config{}
 	c.Discord.ClientID = defaultDiscordClientID
 	c.Discord.AppName = "Viviette"
-	c.Discord.SmallImage = "https://raw.githubusercontent.com/tsukumivi/Evita/main/assets/brand/evita-app.png"
+	c.Discord.SmallImage = "https://raw.githubusercontent.com/tsukumivi/Evita/main/apps/viviette/assets/viviette-256.png"
 	c.Presence.Type = "listening"
 	c.Presence.StatusDisplay = "app"
 	c.Presence.MinUpdateSecs = 5
