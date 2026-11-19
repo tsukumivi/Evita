@@ -3839,6 +3839,18 @@ impl Desktop {
 					request,
 					result: Ok(slash_demo::catalog(guild)),
 				},
+				Command::QuestAction {
+					request,
+					quest_id,
+					action,
+				} => Event::QuestAction {
+					request,
+					quest_id,
+					action,
+					result: Err(Failure::ProtocolAt(
+						"Offline preview does not contact quests",
+					)),
+				},
 				Command::Interaction(request) => {
 					if matches!(
 						&request.data,
