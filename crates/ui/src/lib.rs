@@ -5231,7 +5231,7 @@ impl MessagingUi {
 					match self.home_page {
 						HomePage::Friends => self.friends_page(ui, state, &mut commands),
 						HomePage::Favorites => self.favorites_page(ui, state, &mut commands),
-						HomePage::Nitro => self.account_menu.nitro_home_page(ui, state),
+						HomePage::Nitro => self.nitro_home_page(ui, state),
 						HomePage::Quests => self.quests_home_page(ui, state, &mut commands),
 						HomePage::Shop => {
 							let colors = design::palette(ui);

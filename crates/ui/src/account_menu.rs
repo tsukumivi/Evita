@@ -745,7 +745,7 @@ impl MessagingUi {
 		ui.add_space(5.0);
 	}
 
-	fn account_copy_id_row(&self, ui: &mut egui::Ui, state: &State) {
+	fn account_copy_id_row(&mut self, ui: &mut egui::Ui, state: &State) {
 		let Some(user) = state.user.as_ref() else {
 			return;
 		};

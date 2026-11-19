@@ -1391,6 +1391,9 @@ pub fn semibold_family(ctx: &egui::Context) -> FontFamily {
 pub fn medium_family(ctx: &egui::Context) -> FontFamily {
 	weight(ctx, MEDIUM)
 }
+pub fn body_family(_ctx: &egui::Context) -> FontFamily {
+	FontFamily::Proportional
+}
 pub fn semibold(ui: &egui::Ui, text: impl Into<String>, size: f32) -> RichText {
 	RichText::new(text).font(FontId::new(size, semibold_family(ui.ctx())))
 }

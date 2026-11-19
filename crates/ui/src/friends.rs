@@ -123,8 +123,6 @@ impl MessagingUi {
 	) {
 		let colors = design::palette(ui);
 		let language = self.language;
-		let shortcuts =
-			ShortcutView::new(&self.channel_preferences, self.shortcuts_available(state));
 		egui::Frame::new().inner_margin(24).show(ui, |ui| {
 			ui.label(
 				design::semibold(ui, language.text("friends-add"), 20.0).color(colors.text_strong),
@@ -499,6 +497,8 @@ impl MessagingUi {
 			self.friend_requests_page(ui, state, commands);
 			return;
 		}
+		let shortcuts =
+			ShortcutView::new(&self.channel_preferences, self.shortcuts_available(state));
 		let voice_users = profiles::voice_users(state);
 		let mut selected = None;
 		egui::Frame::new()
