@@ -905,6 +905,36 @@ impl DiscordApi {
 					.await
 					.and_then(|bytes| quests::parse(&bytes)),
 			},
+			Command::QuestAction {
+				request,
+				quest_id,
+				action,
+			} => {
+				let valid_id = !quest_id.is_empty()
+					&& quest_id.len() <= 20
+					&& quest_id.bytes().all(|byte| byte.is_ascii_digit());
+				let (suffix, action) = match action {
+					client_core::quests::Action::Enroll => {
+						("enroll", client_core::quests::Action::Enroll)
+					}
+					client_core::quests::Action::ClaimReward => {
+						("claim-reward", client_core::quests::Action::ClaimReward)
+					}
+				};
+				let result = if valid_id {
+					self.request(Method::POST, &format!("/quests/{quest_id}/{suffix}"), None)
+						.await
+						.map(|_| ())
+				} else {
+					Err(Failure::Protocol)
+				};
+				Event::QuestAction {
+					request,
+					quest_id,
+					action,
+					result,
+				}
+			}
 			Command::ActivitySearch { request, query } => {
 				let path = activity_search_path(&query);
 				Event::ActivitySearch {

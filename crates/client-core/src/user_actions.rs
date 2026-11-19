@@ -275,7 +275,7 @@ impl Actions {
 	}
 }
 impl State {
-	/// Changes whenever friend filtering or ordering may change, including optimistic blocks.
+	/// Changes whenever friend filtering or ordering may change, including pending blocks or ignores.
 	pub fn relationship_view(&self) -> u64 {
 		self.user_actions.view
 	}
@@ -976,7 +976,7 @@ impl State {
 		self.user_actions.sequence = self.user_actions.sequence.wrapping_add(1);
 		let request = self.user_actions.sequence;
 		self.user_actions.pending = Some((action.clone(), request, false));
-		if matches!(action, Action::Block { .. }) {
+		if matches!(action, Action::Block { .. } | Action::Ignore { .. }) {
 			self.user_actions.bump_view();
 		}
 		self.user_actions.status = None;
@@ -995,7 +995,7 @@ impl State {
 		self.user_actions.created_group = None;
 		self.user_actions.challenge = None;
 		if let Some((action, _, _)) = self.user_actions.pending.take() {
-			if matches!(action, Action::Block { .. }) {
+			if matches!(action, Action::Block { .. } | Action::Ignore { .. }) {
 				self.user_actions.bump_view();
 			}
 			self.user_actions.status =
@@ -1541,6 +1541,27 @@ impl State {
 					self.user_actions.restricted.remove(&user);
 					return Ok(());
 				};
+				// Relationship updates often omit the embedded user. Keep the restricted
+				// list useful by reusing the profile we already have for this friend/request.
+				let profile = profile
+					.or_else(|| {
+						self.user_actions
+							.friends
+							.get(&user)
+							.map(|(record, name)| (record.clone(), name.clone()))
+					})
+					.or_else(|| {
+						self.user_actions
+							.requests
+							.get(&user)
+							.map(|(record, name, _)| (record.clone(), name.clone()))
+					})
+					.or_else(|| {
+						self.user_actions
+							.restricted
+							.get(&user)
+							.map(|(record, name, _)| (record.clone(), name.clone()))
+					});
 				if let Some((record, name)) = profile {
 					if user != record.id || !valid_friend(&record, &name) {
 						return Err("Invalid restricted user update");
@@ -1690,7 +1711,7 @@ impl State {
 					self.user_actions.group_origin = None;
 					self.user_actions.created_group = None;
 				}
-				if matches!(action, Action::Block { .. }) {
+				if matches!(action, Action::Block { .. } | Action::Ignore { .. }) {
 					self.user_actions.bump_view();
 				}
 				if let Err(failure) = result {
@@ -1699,6 +1720,33 @@ impl State {
 						self.fail(failure);
 					}
 					return Ok(());
+				}
+				// A successful ignore write is authoritative. Reconcile the local restricted
+				// cache even if a gateway event was observed first; those events may not carry
+				// a profile, and otherwise the Online row disappears without a restricted row.
+				if let (Ok(()), Action::Ignore { user, ignored }) = (&result, &action) {
+					let profile = self
+						.user_actions
+						.friends
+						.get(user)
+						.cloned()
+						.or_else(|| {
+							self.user_actions
+								.requests
+								.get(user)
+								.map(|(record, name, _)| (record.clone(), name.clone()))
+						})
+						.or_else(|| {
+							self.user_actions
+								.restricted
+								.get(user)
+								.map(|(record, name, _)| (record.clone(), name.clone()))
+						});
+					self.apply_user_action(Event::Restriction {
+						user: *user,
+						ignored: ignored.then_some(true),
+						profile,
+					})?;
 				}
 				if !observed {
 					match action {
@@ -1758,20 +1806,7 @@ impl State {
 						Action::Block { user, blocked } => {
 							self.store_relationship(user, blocked)?
 						}
-						Action::Ignore { user, ignored } => {
-							let profile =
-								self.user_actions.friends.get(&user).cloned().or_else(|| {
-									self.user_actions
-										.requests
-										.get(&user)
-										.map(|(u, n, _)| (u.clone(), n.clone()))
-								});
-							self.apply_user_action(Event::Restriction {
-								user,
-								ignored: ignored.then_some(true),
-								profile,
-							})?;
-						}
+						Action::Ignore { .. } => {}
 						Action::Mute { channel, muted } => self.confirm_dm_muted(channel, muted)?,
 						Action::MessageRequest { channel, accept } => {
 							self.set_message_request(channel, false)?;

@@ -1220,10 +1220,6 @@ impl MessagingUi {
 											);
 										}
 										if let Some(user) = direct_user {
-											let server_tag = user.primary_guild.as_deref();
-											let trailing =
-												crate::profiles::server_tag_width(ui, server_tag)
-													+ if server_tag.is_some() { 5.0 } else { 0.0 };
 											crate::name_styles::in_row(hovered, || {
 												crate::account_badge::name(
 													ui,
@@ -1232,17 +1228,11 @@ impl MessagingUi {
 													15.0,
 													(name_color, None, colors.sidebar),
 													egui::Sense::hover(),
-													trailing,
-												)
-											});
-											if let Some(tag) = server_tag {
-												crate::profiles::server_tag(
-													ui,
-													tag,
+													0.0,
 													&mut self.avatars,
 													state.demo,
-												);
-											}
+												)
+											});
 										} else {
 											ui.add(
 												egui::Label::new(

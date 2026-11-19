@@ -6,6 +6,9 @@ pub struct Quest {
 	pub title: String,
 	pub description: String,
 	pub progress: String,
+	pub enrolled: bool,
+	pub completed: bool,
+	pub claimed: bool,
 	/// Rounded completion percentage when Discord returns a current and target count.
 	pub progress_percent: Option<u8>,
 	pub image: Option<String>,
@@ -14,11 +17,14 @@ pub struct Quest {
 impl Quest {
 	pub fn valid(&self) -> bool {
 		!self.id.is_empty()
-			&& self.id.len() <= 64
+			&& self.id.len() <= 20
+			&& self.id.bytes().all(|byte| byte.is_ascii_digit())
 			&& !self.title.is_empty()
 			&& self.title.len() <= 256
 			&& self.description.len() <= 1024
 			&& self.progress.len() <= 128
+			&& (!self.completed || self.enrolled)
+			&& (!self.claimed || self.completed)
 			&& self.progress_percent.is_none_or(|percent| percent <= 100)
 			&& self.image.as_ref().is_none_or(|url| {
 				url.len() <= 2048

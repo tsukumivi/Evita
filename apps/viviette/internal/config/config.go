@@ -19,6 +19,8 @@ import (
 )
 
 const defaultDiscordClientID = "1556599139436077056"
+const defaultDiscordSmallImageURL = "https://raw.githubusercontent.com/tsukumivi/Evita/main/apps/viviette/assets/viviette-736.png"
+const legacyDiscordSmallImageURL = "https://raw.githubusercontent.com/tsukumivi/Evita/main/apps/viviette/assets/viviette-256.png"
 
 type Discord struct {
 	ClientID   string            `toml:"client_id"`
@@ -53,7 +55,7 @@ type Buttons struct {
 	VivietteURL   string `toml:"yozora_url"` // Preserve the existing user-config key.
 }
 
-var OrderSources = []string{"applemusic", "spotify", "spotifyapi", "youtubemusic", "browser", "generic"}
+var OrderSources = []string{"applemusic", "spotify", "youtubemusic", "browser", "generic"}
 
 var ToggleKeys = append(append([]string(nil), OrderSources...), "youtube", "youtube_tabs", "twitch")
 
@@ -64,13 +66,6 @@ type Sources struct {
 	PollMS  int      `toml:"poll_ms"`
 	Order   []string `toml:"order"`
 	Blocked []string `toml:"blocked"`
-}
-
-type Spotify struct {
-	Mode     string `toml:"mode"`
-	ClientID string `toml:"client_id"`
-	PollSecs int    `toml:"poll_secs"`
-	Market   string `toml:"market"`
 }
 
 type Art struct {
@@ -138,7 +133,6 @@ type Config struct {
 	Template Template `toml:"template"`
 	Buttons  Buttons  `toml:"buttons"`
 	Sources  Sources  `toml:"sources"`
-	Spotify  Spotify  `toml:"spotify"`
 	Art      Art      `toml:"art"`
 	Server   Server   `toml:"server"`
 	Log      Log      `toml:"log"`
@@ -149,7 +143,7 @@ func Defaults() *Config {
 	c := &Config{}
 	c.Discord.ClientID = defaultDiscordClientID
 	c.Discord.AppName = "Viviette"
-	c.Discord.SmallImage = "https://raw.githubusercontent.com/tsukumivi/Evita/main/apps/viviette/assets/viviette-256.png"
+	c.Discord.SmallImage = defaultDiscordSmallImageURL
 	c.Presence.Type = "listening"
 	c.Presence.StatusDisplay = "app"
 	c.Presence.MinUpdateSecs = 5
@@ -171,9 +165,6 @@ func Defaults() *Config {
 	c.Sources.Order = slices.Clone(OrderSources)
 	c.Sources.Blocked = slices.Clone(defaultBlocked)
 	c.Sources.Known = slices.Clone(ToggleKeys)
-	c.Spotify.Mode = "system"
-	c.Spotify.PollSecs = 12
-	c.Spotify.Market = "from_token"
 	c.Art.Prefer = "cdn"
 	c.Art.CacheMB = 10
 	c.Log.Level = "info"
@@ -322,6 +313,9 @@ func (c *Config) normalize() {
 	if c.Discord.ClientID == "" {
 		c.Discord.ClientID = defaultDiscordClientID
 	}
+	if c.Discord.SmallImage == legacyDiscordSmallImageURL {
+		c.Discord.SmallImage = defaultDiscordSmallImageURL
+	}
 	if c.Discord.AppName == "Uika Resonance" || c.Discord.AppName == "Yozora" {
 		c.Discord.AppName = "Viviette"
 	}
@@ -361,9 +355,6 @@ func (c *Config) normalize() {
 	if !ValidLanguage(c.UI.Language) {
 		c.UI.Language = DefaultLanguage
 	}
-	if c.Spotify.PollSecs < 5 {
-		c.Spotify.PollSecs = 12
-	}
 	order := make([]string, 0, len(OrderSources))
 	for _, source := range c.Sources.Order {
 		source = strings.ToLower(strings.TrimSpace(source))
@@ -376,7 +367,7 @@ func (c *Config) normalize() {
 		c.Sources.Order = slices.Clone(OrderSources)
 	}
 	if c.Sources.Known == nil {
-		c.Sources.Known = []string{"applemusic", "spotify", "spotifyapi", "browser", "generic"}
+		c.Sources.Known = []string{"applemusic", "spotify", "browser", "generic"}
 	}
 	for _, key := range ToggleKeys {
 		if slices.Contains(OrderSources, key) && !slices.Contains(c.Sources.Order, key) {

@@ -3476,6 +3476,10 @@ impl MessagingUi {
 			pill(&mut row, actions, |ui| {
 				self.screen_share_control(ui, state);
 				if let Some(guild) = call_guild {
+					let selected_source = self
+						.soundboard_source_guild
+						.filter(|source| state.guild(*source).is_some())
+						.unwrap_or(guild);
 					let soundboard = control(
 						ui,
 						crate::icons::Icon::Soundboard,
@@ -3490,12 +3494,44 @@ impl MessagingUi {
 						.show(|ui| {
 							ui.set_min_width(220.0);
 							ui.label("Soundboard");
+							let source_name = state
+								.guild(selected_source)
+								.map_or("Choose a server", |guild| guild.name.as_str());
+							let mut source_changed = None;
+							ui.horizontal(|ui| {
+								ui.label("From");
+								egui::ComboBox::from_id_salt(("soundboard-source", channel))
+									.selected_text(source_name)
+									.show_ui(ui, |ui| {
+										for source in state.guilds.iter().take(512) {
+											if ui
+												.selectable_label(
+													source.id == selected_source,
+													&source.name,
+												)
+												.clicked()
+											{
+												source_changed = Some(source.id);
+											}
+										}
+									});
+							});
+							if let Some(source) = source_changed
+								&& source != selected_source
+							{
+								self.soundboard_source_guild = Some(source);
+								soundboard_action =
+									Some(model::server_admin::Action::LoadSoundboard {
+										channel: Some(channel),
+									});
+								ui.close();
+							}
 							let catalog = state
 								.server_admin
 								.soundboard
 								.as_ref()
-								.filter(|catalog| catalog.guild == guild);
-							if !state.can_read_soundboard(guild, Some(channel)) {
+								.filter(|catalog| catalog.guild == selected_source);
+							if !state.can_read_soundboard(selected_source, Some(channel)) {
 								ui.weak("You don’t have permission to use the soundboard here.");
 							} else if let Some(catalog) = catalog {
 								if catalog.items.is_empty() {
@@ -3507,7 +3543,9 @@ impl MessagingUi {
 									if ui
 										.add_enabled(
 											state.can_play_guild_soundboard(
-												guild, channel, sound.id,
+												selected_source,
+												channel,
+												sound.id,
 											) && !state.server_admin.pending,
 											egui::Button::new(format!(
 												"{}  {}",
@@ -3521,19 +3559,23 @@ impl MessagingUi {
 											Some(model::server_admin::Action::PlaySoundboard {
 												channel,
 												sound: sound.id,
-												source_guild: guild,
+												source_guild: selected_source,
 											});
 										ui.close();
 									}
 								}
-							} else if !state.server_admin.pending
-								&& ui.button("Load this server’s sounds").clicked()
-							{
-								soundboard_action =
-									Some(model::server_admin::Action::LoadSoundboard {
-										channel: Some(channel),
-									});
-								ui.close();
+							} else if !state.server_admin.pending {
+								let source_name = state
+									.guild(selected_source)
+									.map_or("server", |guild| guild.name.as_str());
+								ui.weak(format!("Sounds from {source_name}"));
+								if ui.button("Load sounds").clicked() {
+									soundboard_action =
+										Some(model::server_admin::Action::LoadSoundboard {
+											channel: Some(channel),
+										});
+									ui.close();
+								}
 							}
 						});
 				}
@@ -3571,9 +3613,19 @@ impl MessagingUi {
 						}
 					});
 				if let Some(action) = soundboard_action
-					&& let Some(guild) = call_guild
-					&& let Some(command) = state.request_server_admin(guild, action)
-				{
+					&& let Some(call_guild) = call_guild
+					&& let Some(command) = state.request_server_admin(
+						match &action {
+							model::server_admin::Action::PlaySoundboard {
+								source_guild, ..
+							} => *source_guild,
+							_ => self
+								.soundboard_source_guild
+								.filter(|source| state.guild(*source).is_some())
+								.unwrap_or(call_guild),
+						},
+						action,
+					) {
 					commands.push(command);
 				}
 			});

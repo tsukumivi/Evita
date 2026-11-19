@@ -20,7 +20,7 @@ func serviceName(t *player.Track) string {
 	switch t.Source {
 	case "youtubemusic":
 		return "YouTube Music"
-	case "spotify", "spotifyapi":
+	case "spotify":
 		return "Spotify"
 	case "applemusic":
 		return "Apple Music"
@@ -74,7 +74,7 @@ func musicURL(t *player.Track, resolved string, spotifySearch bool) string {
 	switch t.Source {
 	case "youtubemusic":
 		return ""
-	case "spotify", "spotifyapi":
+	case "spotify":
 		if platformURL(t.ListenURL, "open.spotify.com") {
 			return t.ListenURL
 		}

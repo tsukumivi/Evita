@@ -32,13 +32,17 @@ pub(super) fn parse(bytes: &[u8]) -> Result<Vec<Quest>, Failure> {
 		let source = row.get("quest").unwrap_or(row);
 		let config = source.get("config").unwrap_or(source);
 		let id = text(row, &[&["quest_id"], &["quest", "id"], &["id"]], 64);
-		if row
-			.get("user_status")
-			.and_then(|status| status.get("completed_at"))
-			.is_some_and(|completed| !completed.is_null())
-		{
-			continue;
-		}
+		let status = row.get("user_status");
+		let has_time = |field: &str| {
+			status
+				.and_then(|status| status.get(field))
+				.is_some_and(|value| {
+					value.as_str().is_some_and(|text| !text.is_empty())
+						|| value.as_bool() == Some(true)
+				})
+		};
+		let claimed = has_time("claimed_at");
+		let completed = has_time("completed_at") || claimed;
 		let title = text(
 			source,
 			&[
@@ -75,11 +79,24 @@ pub(super) fn parse(bytes: &[u8]) -> Result<Vec<Quest>, Failure> {
 			|| image.starts_with("https://media.discordapp.net/"))
 		.then_some(image);
 		let (progress, progress_percent) = quest_progress(row, config);
+		let enrolled = completed
+			|| status
+				.and_then(|status| status.get("enrolled_at"))
+				.is_some_and(|value| {
+					value.as_str().is_some_and(|text| !text.is_empty())
+						|| value.as_bool() == Some(true)
+				}) || status
+			.and_then(|status| status.get("progress"))
+			.and_then(Value::as_object)
+			.is_some_and(|progress| !progress.is_empty());
 		let quest = Quest {
 			id,
 			title,
 			description,
 			progress,
+			enrolled,
+			completed,
+			claimed,
 			progress_percent,
 			image,
 		};
@@ -126,7 +143,7 @@ mod tests {
 			br#"{"user_quests":[{"quest":{"id":"123","config":{"messages":{"quest_name":"Play a game","quest_description":"Launch the game"},"task_config":{"tasks":{"WATCH_VIDEO":{"target":20}}},"assets":{"hero":"https://cdn.discordapp.com/quests/hero.png"}}},"user_status":{"progress":{"WATCH_VIDEO":{"value":5}}}},{"quest_id":"124","config":{"application":{"name":"A quest","icon":"https://evil.invalid/image.png"}}},{"quest":{"id":"125","config":{"messages":{"quest_name":"Finished quest"}}},"user_status":{"completed_at":"2026-11-08T00:00:00.000000+00:00"}}]}"#,
 		)
 	.unwrap();
-		assert_eq!(rows.len(), 2);
+		assert_eq!(rows.len(), 3);
 		assert_eq!(rows[0].title, "Play a game");
 		assert_eq!(rows[0].progress, "5 / 20 · 25%");
 		assert_eq!(rows[0].progress_percent, Some(25));
@@ -138,7 +155,9 @@ mod tests {
 		assert_eq!(rows[1].image, None);
 		assert!(rows[1].progress.is_empty());
 		assert_eq!(rows[1].progress_percent, None);
-		assert!(!rows.iter().any(|quest| quest.title == "Finished quest"));
+		assert!(rows[2].completed);
+		assert!(!rows[2].claimed);
+		assert_eq!(rows[2].title, "Finished quest");
 		assert!(parse(br#"{"user_quests":[{}]}"#).unwrap().is_empty());
 		assert!(parse(br#"{"user_quests":[]}"#).is_ok());
 	}

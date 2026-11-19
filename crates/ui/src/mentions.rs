@@ -81,10 +81,13 @@ pub(crate) fn user_mention_token(user: Id) -> String {
 }
 
 pub(crate) fn can_mention_mass(state: &State, channel: Id) -> bool {
-	state
-		.channel(channel)
-		.is_some_and(|channel| channel.guild.is_some())
-		&& state.permission(channel, model::permissions::MENTION_EVERYONE) == Some(true)
+	state.channel(channel).is_some_and(|channel| {
+		// Mass-mention suggestions are useful as literal text in group DMs. A one-to-one DM
+		// remains excluded, and guild channels still require Discord's MENTION_EVERYONE bit.
+		channel.kind == 3 && channel.guild.is_none()
+			|| channel.guild.is_some()
+				&& state.permission(channel.id, model::permissions::MENTION_EVERYONE) == Some(true)
+	})
 }
 
 impl Candidate {

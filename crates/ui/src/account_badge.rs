@@ -11,8 +11,12 @@ pub(super) fn name(
 	color: (Color32, Option<model::server_roles::Colors>, Color32),
 	sense: Sense,
 	trailing: f32,
+	avatars: &mut crate::avatars::Avatars,
+	demo: bool,
 ) -> Response {
-	name_with_mode(ui, user, name, size, color, sense, trailing, false)
+	name_with_mode(
+		ui, user, name, size, color, sense, trailing, false, avatars, demo,
+	)
 }
 
 pub(super) fn server_member_name(
@@ -23,8 +27,12 @@ pub(super) fn server_member_name(
 	color: (Color32, Option<model::server_roles::Colors>, Color32),
 	sense: Sense,
 	trailing: f32,
+	avatars: &mut crate::avatars::Avatars,
+	demo: bool,
 ) -> Response {
-	name_with_mode(ui, user, name, size, color, sense, trailing, true)
+	name_with_mode(
+		ui, user, name, size, color, sense, trailing, true, avatars, demo,
+	)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -37,6 +45,8 @@ fn name_with_mode(
 	sense: Sense,
 	trailing: f32,
 	server_member: bool,
+	avatars: &mut crate::avatars::Avatars,
+	demo: bool,
 ) -> Response {
 	let colors = design::palette(ui);
 	let account_label = user.account_label();
@@ -53,10 +63,17 @@ fn name_with_mode(
 			colors.accent_text,
 		)
 	});
-	let reserve = badge.as_ref().map_or(0.0, |text| {
+	let bot_reserve = badge.as_ref().map_or(0.0, |text| {
 		text.size().x + 8.0 + if verified { 10.0 } else { 0.0 } + ui.spacing().item_spacing.x
 	});
-	let width = (ui.available_width() - reserve - trailing).max(0.0);
+	let server_tag = user.primary_guild.as_deref();
+	let tag_reserve = crate::profiles::server_tag_width(ui, server_tag)
+		+ if server_tag.is_some() {
+			ui.spacing().item_spacing.x
+		} else {
+			0.0
+		};
+	let width = (ui.available_width() - bot_reserve - tag_reserve - trailing).max(0.0);
 	// In DMs/messages, a Nitro style replaces the role color; server rows use role colors instead.
 	let response = ui
 		.scope(|ui| {
@@ -109,6 +126,9 @@ fn name_with_mode(
 		let description = crate::i18n::translate_if_key(description_key);
 		badge.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, &description));
 		badge.on_hover_text(description);
+	}
+	if let Some(tag) = server_tag {
+		crate::profiles::server_tag(ui, tag, avatars, demo);
 	}
 	response
 }

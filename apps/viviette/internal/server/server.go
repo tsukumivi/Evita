@@ -21,7 +21,6 @@ import (
 	"viviette/internal/config"
 	"viviette/internal/player"
 	"viviette/internal/presence"
-	"viviette/internal/spotifyapi"
 	"viviette/internal/sysutil"
 	"viviette/internal/version"
 )
@@ -40,14 +39,6 @@ type Deps struct {
 	CfgPath    string
 	Token      string
 	DiscordApp string
-
-	// Spotify connect from the panel. Without them the panel hides the connect controls.
-	Spotify           *spotifyapi.Manager
-	SpotifyLink       *spotifyapi.Link
-	ClearSpotifyToken func() error
-	OpenURL           func(string) error
-	// RedirectBase is the panel's own loopback origin; Start fills it in.
-	RedirectBase string
 }
 
 func validateSourceOrder(order, canonical []string) error {
@@ -145,7 +136,7 @@ func Handler(d Deps) http.Handler {
 	})
 	mux.HandleFunc("/api/state", auth(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(stateResponse{Status: d.Engine.Status(), Spotify: d.spotifyState(), Restored: d.Cfg.Restored()})
+		_ = json.NewEncoder(w).Encode(stateResponse{Status: d.Engine.Status(), Restored: d.Cfg.Restored()})
 	}))
 	mux.HandleFunc("/api/sources", auth(func(w http.ResponseWriter, r *http.Request) {
 		configMu.Lock()
@@ -340,7 +331,6 @@ func Start(d Deps, port int) (string, error) {
 		return "", err
 	}
 	base := "http://" + ln.Addr().String()
-	d.RedirectBase = base
 	srv := &http.Server{Handler: Handler(d), ReadHeaderTimeout: 5 * time.Second}
 	go func() { _ = srv.Serve(ln) }()
 	return base, nil

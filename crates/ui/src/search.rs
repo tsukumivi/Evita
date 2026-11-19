@@ -1650,6 +1650,8 @@ impl SearchUi {
 											),
 											egui::Sense::hover(),
 											88.0,
+											avatars,
+											state.demo,
 										)
 									},
 								);

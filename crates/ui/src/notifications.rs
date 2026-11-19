@@ -211,21 +211,17 @@ pub(super) fn rail_badge(ui: &egui::Ui, id: egui::Id, rect: egui::Rect, count: u
 		shown,
 	);
 }
-/// Green speaker badge on the rail avatar of the conversation you are calling in.
+/// Neutral speaker badge on the rail avatar of the conversation you are calling in.
 fn call_badge(ui: &egui::Ui, rect: egui::Rect) {
-	speaker_badge(ui, rect, design::palette(ui).positive, Color32::WHITE);
+	voice_badge(ui, rect);
 }
-/// Speaker badge on a server icon: green for your own call, neutral when others are in voice.
-pub(super) fn voice_badge(ui: &egui::Ui, rect: egui::Rect, own_call: bool) {
+/// Discord-style neutral speaker badge on a server icon when someone is in voice.
+pub(super) fn voice_badge(ui: &egui::Ui, rect: egui::Rect) {
 	if !ui.is_rect_visible(rect) {
 		return;
 	}
 	let colors = design::palette(ui);
-	if own_call {
-		call_badge(ui, rect);
-	} else {
-		speaker_badge(ui, rect, colors.raised, colors.text_strong);
-	}
+	speaker_badge(ui, rect, colors.raised, colors.text_strong);
 }
 fn speaker_badge(ui: &egui::Ui, rect: egui::Rect, fill: Color32, glyph: Color32) {
 	// Mirrors the mention badge's geometry at the top corner so the two line up.
@@ -279,7 +275,8 @@ impl MessagingUi {
 			.show(ui, |ui| {
 				// Discord stacks rail tiles 8 points apart.
 				ui.spacing_mut().item_spacing.y = 8.0;
-				let home = self.guild.is_none();
+				let home = self.guild.is_none()
+					&& (state.selected.is_some() || self.home_page != super::HomePage::Favorites);
 				let (rect, response) =
 					ui.allocate_exact_size(egui::Vec2::splat(RAIL_TILE), egui::Sense::click());
 				let hovered = response.hovered() || response.has_focus();
@@ -323,9 +320,66 @@ impl MessagingUi {
 				});
 				if response.clicked() {
 					self.guild = None;
+					self.home_page = super::HomePage::Friends;
 					if let Some(command) = state.open_messages() {
 						commands.push(command);
 					}
+					self.search.open = false;
+				}
+				let favorites_selected = self.guild.is_none()
+					&& state.selected.is_none()
+					&& self.home_page == super::HomePage::Favorites;
+				let (favorites_rect, favorites_response) =
+					ui.allocate_exact_size(egui::Vec2::splat(RAIL_TILE), egui::Sense::click());
+				let favorites_hovered =
+					favorites_response.hovered() || favorites_response.has_focus();
+				ui.painter().rect_filled(
+					favorites_rect,
+					if favorites_selected || favorites_hovered {
+						11
+					} else {
+						14
+					},
+					if favorites_selected {
+						colors.accent
+					} else {
+						colors.raised
+					},
+				);
+				crate::icons::paint(
+					ui.painter(),
+					crate::icons::Icon::StarFill,
+					favorites_rect.shrink(10.0),
+					if favorites_selected {
+						colors.accent_text
+					} else {
+						colors.text
+					},
+				);
+				rail_indicator(
+					ui,
+					favorites_response.id,
+					favorites_rect,
+					favorites_selected,
+					favorites_hovered,
+					false,
+				);
+				favorites_response.widget_info(|| {
+					egui::WidgetInfo::selected(
+						egui::Role::Button,
+						true,
+						favorites_selected,
+						crate::i18n::translate("favorites-title"),
+					)
+				});
+				design::rail_name(
+					&favorites_response,
+					&crate::i18n::translate("favorites-title"),
+				);
+				if favorites_response.clicked() && !favorites_selected {
+					self.home_page = super::HomePage::Favorites;
+					self.guild = None;
+					state.open_home();
 					self.search.open = false;
 				}
 				self.scroll

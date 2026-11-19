@@ -126,6 +126,12 @@ func openDashboard(endpoint dashboardEndpoint) int {
 	return 0
 }
 
+func openBrowser(raw string) {
+	if err := exec.Command("rundll32", "url.dll,FileProtocolHandler", raw).Start(); err != nil {
+		fmt.Println("open browser failed:", err, "— visit:", raw)
+	}
+}
+
 func daemonExecutable() (string, error) {
 	self, err := os.Executable()
 	if err != nil {

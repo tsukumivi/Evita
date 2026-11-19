@@ -80,6 +80,11 @@ pub enum Command {
 	Quests {
 		request: u64,
 	},
+	QuestAction {
+		request: u64,
+		quest_id: String,
+		action: quests::Action,
+	},
 	ActivitySearch {
 		request: u64,
 		query: String,
@@ -469,6 +474,12 @@ pub enum Event {
 	Quests {
 		request: u64,
 		result: Result<Vec<model::Quest>, auth::Failure>,
+	},
+	QuestAction {
+		request: u64,
+		quest_id: String,
+		action: quests::Action,
+		result: Result<(), auth::Failure>,
 	},
 	ActivitySearch {
 		request: u64,
@@ -2135,6 +2146,15 @@ impl State {
 				self.quests.apply(*request, Err(auth::Failure::Capacity));
 				return;
 			}
+			Command::QuestAction {
+				request,
+				quest_id,
+				action,
+			} => {
+				self.quests
+					.apply_action(*request, quest_id, *action, Err(auth::Failure::Capacity));
+				return;
+			}
 			Command::ActivitySearch { request, .. } => {
 				self.activity_search
 					.apply(*request, Err(auth::Failure::Capacity));
@@ -2379,6 +2399,16 @@ impl State {
 		}
 		if let Command::Quests { request } = command {
 			self.quests.apply(request, Err(auth::Failure::Capacity));
+			return;
+		}
+		if let Command::QuestAction {
+			request,
+			quest_id,
+			action,
+		} = command
+		{
+			self.quests
+				.apply_action(request, &quest_id, action, Err(auth::Failure::Capacity));
 			return;
 		}
 		if let Command::ActivitySearch { request, .. } = command {
@@ -2897,6 +2927,15 @@ impl State {
 		let result = match envelope.event {
 			Event::Quests { request, result } => {
 				self.quests.apply(request, result);
+				Ok(())
+			}
+			Event::QuestAction {
+				request,
+				quest_id,
+				action,
+				result,
+			} => {
+				self.quests.apply_action(request, &quest_id, action, result);
 				Ok(())
 			}
 			Event::ActivitySearch { request, result } => {
@@ -4640,6 +4679,7 @@ impl Event {
 				Self::Quests {
 					result: Ok(items), ..
 				} => items.iter().map(model::Quest::bytes).sum(),
+				Self::QuestAction { quest_id, .. } => quest_id.capacity(),
 				Self::ActivitySearch {
 					result: Ok(items), ..
 				} => {

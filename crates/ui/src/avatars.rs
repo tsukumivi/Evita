@@ -1492,9 +1492,9 @@ impl Avatars {
 			);
 			let face =
 				egui::Rect::from_center_size(rect.center(), rect.size() * (1.0 - 0.05 * press));
-			// Rests rounder and morphs to the squircle when hovered or selected, like Discord.
-			let radius = egui::lerp(size * 0.4..=squircle, lit).round() as u8;
-			self.paint_guild_face(ui, guild, face, demo, lit, radius);
+			// Discord keeps server icons squircle-shaped in both states; highlight changes the
+			// selection treatment without turning the icon back into a circle.
+			self.paint_guild_face(ui, guild, face, demo, lit, squircle.round() as u8);
 		}
 		response.widget_info(|| {
 			egui::WidgetInfo::selected(

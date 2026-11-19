@@ -2,7 +2,9 @@
 use crate::{
 	MessagingUi, design,
 	icons::{self, Icon},
-	profiles, user_menu,
+	profiles,
+	shortcuts::ShortcutView,
+	user_menu,
 };
 use client_core::{Command, State};
 use egui::{Color32, RichText, vec2};
@@ -121,6 +123,8 @@ impl MessagingUi {
 	) {
 		let colors = design::palette(ui);
 		let language = self.language;
+		let shortcuts =
+			ShortcutView::new(&self.channel_preferences, self.shortcuts_available(state));
 		egui::Frame::new().inner_margin(24).show(ui, |ui| {
 			ui.label(
 				design::semibold(ui, language.text("friends-add"), 20.0).color(colors.text_strong),
@@ -776,7 +780,7 @@ impl MessagingUi {
 										user,
 										&mut self.profile,
 										&mut self.user_action,
-										None,
+										Some(shortcuts),
 									)
 								});
 							});

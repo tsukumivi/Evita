@@ -36,8 +36,8 @@ func TestSourcesOrderRoundTrip(t *testing.T) {
 	}
 	blockedBefore := blockedCfg.Sources.Blocked
 
-	newOrder := []string{"browser", "spotify", "applemusic", "spotifyapi", "youtubemusic", "generic"}
-	w = request(h, "POST", "/api/sources", `{"order":["browser","spotify","applemusic","spotifyapi","youtubemusic","generic"]}`, true)
+	newOrder := []string{"browser", "spotify", "applemusic", "youtubemusic", "generic"}
+	w = request(h, "POST", "/api/sources", `{"order":["browser","spotify","applemusic","youtubemusic","generic"]}`, true)
 	if w.Code != 200 {
 		t.Fatalf("POST order status=%d body=%s", w.Code, w.Body.String())
 	}
@@ -55,7 +55,7 @@ func TestSourcesOrderRoundTrip(t *testing.T) {
 		t.Fatalf("saved order = %v, want %v", loaded.Sources.Order, newOrder)
 	}
 
-	w = request(h, "POST", "/api/sources", `{"order":["browser","spotify","applemusic","spotifyapi","youtubemusic","generic"]}`, true)
+	w = request(h, "POST", "/api/sources", `{"order":["browser","spotify","applemusic","youtubemusic","generic"]}`, true)
 	if w.Code != 200 {
 		t.Fatalf("POST order status=%d body=%s", w.Code, w.Body.String())
 	}
@@ -93,10 +93,10 @@ func TestSourcesOrderRejectsInvalidLists(t *testing.T) {
 		`{"order":["browser","browser"]}`,
 		`{"order":["browser","spotify","bogus"]}`,
 		`{"order":"browser"}`,
-		`{"order":["BROWSER","spotify","applemusic","spotifyapi","youtubemusic","generic"]}`,
+		`{"order":["BROWSER","spotify","applemusic","youtubemusic","generic"]}`,
 		`{"order":null}`,
-		`{"order":["applemusic","spotify","spotifyapi","youtubemusic","browser","youtubemusic"]}`,
-		`{"order":["applemusic","spotify","spotifyapi","youtubemusic","browser","bogus"]}`,
+		`{"order":["applemusic","spotify","youtubemusic","browser","youtubemusic"]}`,
+		`{"order":["applemusic","spotify","youtubemusic","browser","bogus"]}`,
 	} {
 		w := request(h, "POST", "/api/sources", body, true)
 		if w.Code != 400 {
@@ -147,11 +147,11 @@ func TestYouTubeMusicToggleAndReservedOrder(t *testing.T) {
 		t.Fatalf("enable: %d", w.Code)
 	}
 	for _, key := range []string{"youtube", "youtube_tabs"} {
-		w = request(h, "POST", "/api/sources", `{"order":["applemusic","spotify","spotifyapi","youtubemusic","browser","generic","`+key+`"]}`, true)
+		w = request(h, "POST", "/api/sources", `{"order":["applemusic","spotify","youtubemusic","browser","generic","`+key+`"]}`, true)
 		if w.Code != 400 {
 			t.Errorf("accepted %s in order", key)
 		}
-		w = request(h, "POST", "/api/sources", `{"order":["applemusic","spotify","spotifyapi","youtubemusic","browser","`+key+`"]}`, true)
+		w = request(h, "POST", "/api/sources", `{"order":["applemusic","spotify","youtubemusic","browser","`+key+`"]}`, true)
 		if w.Code != 400 {
 			t.Errorf("accepted %s in place of a canonical source", key)
 		}
@@ -160,11 +160,11 @@ func TestYouTubeMusicToggleAndReservedOrder(t *testing.T) {
 
 func TestMigratedSourceOrderStillValid(t *testing.T) {
 	for _, known := range []string{
-		`["applemusic","spotify","spotifyapi","browser","generic"]`,
-		`["applemusic","spotify","spotifyapi","youtubemusic","youtubemusic","browser","generic"]`,
+		`["applemusic","spotify","browser","generic"]`,
+		`["applemusic","spotify","youtubemusic","youtubemusic","browser","generic"]`,
 	} {
 		path := t.TempDir() + "/legacy.toml"
-		fixture := "[sources]\norder = [\"generic\",\"spotifyapi\",\"browser\",\"spotify\",\"applemusic\"]\nblocked = [\"browser\",\"browser\"]\nknown = " + known + "\n"
+		fixture := "[sources]\norder = [\"generic\",\"browser\",\"spotify\",\"applemusic\"]\nblocked = [\"browser\",\"browser\"]\nknown = " + known + "\n"
 		if err := os.WriteFile(path, []byte(fixture), 0600); err != nil {
 			t.Fatal(err)
 		}
@@ -181,7 +181,7 @@ func TestMigratedSourceOrderStillValid(t *testing.T) {
 func TestLegacySourceOrderDashboardApply(t *testing.T) {
 	path := t.TempDir() + "/legacy.toml"
 	fixture := `[sources]
-order = ["generic", "spotifyapi", "browser", "spotify", "applemusic", "spotify", "custom"]
+order = ["generic", "browser", "spotify", "applemusic", "spotify", "custom"]
 blocked = []
 `
 	if err := os.WriteFile(path, []byte(fixture), 0600); err != nil {

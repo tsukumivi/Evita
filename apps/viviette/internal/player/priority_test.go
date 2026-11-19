@@ -10,7 +10,7 @@ func TestArbitrateHonorsPriorityHierarchy(t *testing.T) {
 		{Source: "spotify", AppID: "Spotify.exe", Title: "song", Playing: true},
 	}
 
-	if got := Arbitrate(tracks, []string{"browser", "spotify", "spotifyapi", "applemusic", "generic"}, nil); got == nil || got.Source != "browser" {
+	if got := Arbitrate(tracks, []string{"browser", "spotify", "applemusic", "generic"}, nil); got == nil || got.Source != "browser" {
 		t.Fatalf("priority order not honored: got=%+v", got)
 	}
 
@@ -21,9 +21,9 @@ func TestArbitrateHonorsPriorityHierarchy(t *testing.T) {
 
 func TestArbitratePromotesWhenTopPriorityDisappears(t *testing.T) {
 
-	partial := []Track{{Source: "spotifyapi", Title: "api", Playing: true}, {Source: "generic", Title: "gen", Playing: true}}
-	order := []string{"applemusic", "spotify", "spotifyapi", "browser", "generic"}
-	if got := Arbitrate(partial, order, nil); got == nil || got.Source != "spotifyapi" {
+	partial := []Track{{Source: "spotify", Title: "song", Playing: true}, {Source: "generic", Title: "gen", Playing: true}}
+	order := []string{"applemusic", "spotify", "browser", "generic"}
+	if got := Arbitrate(partial, order, nil); got == nil || got.Source != "spotify" {
 		t.Fatalf("fallback ignored order: got=%+v", got)
 	}
 
@@ -32,7 +32,7 @@ func TestArbitratePromotesWhenTopPriorityDisappears(t *testing.T) {
 	withBrowser = append(withBrowser, Track{Source: "browser", Title: "video", Playing: true})
 	got := Arbitrate(withBrowser, order, nil)
 
-	got = Arbitrate(withBrowser, []string{"applemusic", "spotify", "browser", "spotifyapi", "generic"}, nil)
+	got = Arbitrate(withBrowser, []string{"applemusic", "spotify", "browser", "generic"}, nil)
 	if got == nil || got.Source != "browser" {
 		t.Fatalf("expected browser at top: got=%+v", got)
 	}

@@ -1,6 +1,12 @@
 //! One explicitly refreshed snapshot of the signed-in account's active quests.
 use crate::{Command, auth::Failure};
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Action {
+	Enroll,
+	ClaimReward,
+}
+
 const MAX_QUESTS: usize = 100;
 const MAX_BYTES: usize = 256 * 1024;
 
@@ -10,12 +16,15 @@ pub struct Quests {
 	pub loading: bool,
 	pub loaded: bool,
 	pub error: Option<Failure>,
+	pub action_pending: bool,
+	pub action_error: Option<Failure>,
 	request: u64,
+	action_request: u64,
 }
 
 impl Quests {
 	pub fn request(&mut self, refresh: bool) -> Option<Command> {
-		if self.loading || (self.loaded && !refresh) {
+		if self.loading || self.action_pending || (self.loaded && !refresh) {
 			return None;
 		}
 		self.request = self.request.wrapping_add(1).max(1);
@@ -24,6 +33,55 @@ impl Quests {
 		Some(Command::Quests {
 			request: self.request,
 		})
+	}
+
+	pub fn request_action(&mut self, id: &str, action: Action) -> Option<Command> {
+		if self.action_pending
+			|| self.loading
+			|| id.len() > 20
+			|| !id.bytes().all(|c| c.is_ascii_digit())
+		{
+			return None;
+		}
+		let quest = self.items.iter().find(|quest| quest.id == id)?;
+		match action {
+			Action::Enroll if quest.enrolled || quest.completed || quest.claimed => return None,
+			Action::ClaimReward if !quest.completed || quest.claimed => return None,
+			_ => {}
+		}
+		self.action_request = self.action_request.wrapping_add(1).max(1);
+		self.action_pending = true;
+		self.action_error = None;
+		Some(Command::QuestAction {
+			request: self.action_request,
+			quest_id: id.to_owned(),
+			action,
+		})
+	}
+
+	pub fn apply_action(
+		&mut self,
+		request: u64,
+		id: &str,
+		action: Action,
+		result: Result<(), Failure>,
+	) {
+		if !self.action_pending || request != self.action_request {
+			return;
+		}
+		self.action_pending = false;
+		self.action_error = result.err();
+		if self.action_error.is_some() {
+			return;
+		}
+		if let Some(quest) = self.items.iter_mut().find(|quest| quest.id == id) {
+			match action {
+				Action::Enroll => quest.enrolled = true,
+				Action::ClaimReward => quest.claimed = true,
+			}
+		}
+		// Refresh status from Discord after a write rather than trusting local completion state.
+		self.loaded = false;
 	}
 
 	pub fn apply(&mut self, request: u64, result: Result<Vec<model::Quest>, Failure>) {
@@ -60,6 +118,9 @@ mod tests {
 			title: "Synthetic quest".into(),
 			description: "Synthetic objective".into(),
 			progress: String::new(),
+			enrolled: false,
+			completed: false,
+			claimed: false,
 			progress_percent: None,
 			image: None,
 		}

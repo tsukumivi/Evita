@@ -300,6 +300,26 @@ pub(super) fn contents(
 	ui.separator();
 	if let Some(dm) = dm {
 		if let Some(view) = view {
+			let favorite = view.contains(Shortcut::Favorite, dm.id);
+			if ui
+				.add_enabled(
+					view.available(),
+					egui::Button::new(crate::i18n::translate_if_key(
+						&(if favorite {
+							crate::i18n::translate("channel-menu-context-remove-from-favorites")
+						} else {
+							crate::i18n::translate("channel-menu-context-add-to-favorites")
+						}),
+					)),
+				)
+				.on_hover_text(crate::i18n::translate(
+					"channel-menu-context-favorites-are-saved-on-this-device",
+				))
+				.clicked()
+			{
+				*action = Some(Action::Shortcut(view.toggle(Shortcut::Favorite, dm.id)));
+				ui.close();
+			}
 			let pinned = view.contains(Shortcut::Pinned, dm.id);
 			if ui
 				.add_enabled(
