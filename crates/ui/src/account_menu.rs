@@ -276,7 +276,6 @@ impl MessagingUi {
 			.show(ui, |ui| {
 				ui.set_width(ui.available_width());
 				self.account_identity_card(ui, state, commands);
-				self.account_nitro_card(ui, state);
 				if let Some(user) = &state.user {
 					let guild = state
 						.selected
@@ -299,6 +298,8 @@ impl MessagingUi {
 				ui.spacing_mut().item_spacing.y = 2.0;
 				self.account_profile_actions(ui, state);
 				self.account_custom_status_row(ui);
+				ui.add_space(6.0);
+				self.account_nitro_card(ui, state);
 				self.account_switcher(ui, state);
 				self.account_copy_id_row(ui, state);
 			});
@@ -1337,6 +1338,22 @@ mod tests {
 			for _ in 0..3 {
 				frame(&ctx, &mut view, &mut state, size, vec![]);
 			}
+			frame(
+				&ctx,
+				&mut view,
+				&mut state,
+				size,
+				vec![
+					Event::PointerMoved(Pos2::new(170.0, 260.0)),
+					Event::MouseWheel {
+						unit: egui::MouseWheelUnit::Point,
+						delta: vec2(0.0, -240.0),
+						modifiers: egui::Modifiers::NONE,
+						phase: egui::TouchPhase::Move,
+						source: egui::MouseWheelSource::Unknown,
+					},
+				],
+			);
 			let text = frame(&ctx, &mut view, &mut state, size, vec![]);
 			let listed = |label: &str| text.iter().any(|(value, _)| value == label);
 			assert!(listed("SWITCH ACCOUNTS"));
