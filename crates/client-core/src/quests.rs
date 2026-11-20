@@ -140,27 +140,32 @@ mod tests {
 		assert!(quests.request(false).is_none());
 		assert!(matches!(quests.request(true), Some(Command::Quests { .. })));
 	}
-    #[test]
-    fn quest_actions_enforce_valid_ids_and_reconcile_completion_state() {
-        let mut quests = Quests::default();
-        let Some(Command::Quests { request }) = quests.request(false) else {
-            panic!("first visit requests quests")
-        };
-        let mut item = quest("123456");
-        item.completed = true;
-        assert!(!item.valid(), "completed quest requires enrolled = true");
-        item.enrolled = true;
-        quests.apply(request, Ok(vec![item]));
+	#[test]
+	fn quest_actions_enforce_valid_ids_and_reconcile_completion_state() {
+		let mut quests = Quests::default();
+		let Some(Command::Quests { request }) = quests.request(false) else {
+			panic!("first visit requests quests")
+		};
+		let mut item = quest("123456");
+		item.completed = true;
+		assert!(!item.valid(), "completed quest requires enrolled = true");
+		item.enrolled = true;
+		quests.apply(request, Ok(vec![item]));
 
-        assert!(quests.request_action("bad-id", Action::ClaimReward).is_none());
-        let Some(Command::QuestAction {
-            request: action_req, ..
-        }) = quests.request_action("123456", Action::ClaimReward)
-        else {
-            panic!("valid completed quest can claim reward")
-        };
-        quests.apply_action(action_req, "123456", Action::ClaimReward, Ok(()));
-        assert!(quests.items[0].claimed);
-        assert!(!quests.loaded);
-    }
+		assert!(
+			quests
+				.request_action("bad-id", Action::ClaimReward)
+				.is_none()
+		);
+		let Some(Command::QuestAction {
+			request: action_req,
+			..
+		}) = quests.request_action("123456", Action::ClaimReward)
+		else {
+			panic!("valid completed quest can claim reward")
+		};
+		quests.apply_action(action_req, "123456", Action::ClaimReward, Ok(()));
+		assert!(quests.items[0].claimed);
+		assert!(!quests.loaded);
+	}
 }
