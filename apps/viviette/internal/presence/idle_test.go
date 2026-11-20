@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"viviette/internal/config"
-	"viviette/internal/player"
 	"viviette/internal/smtc"
 )
 
@@ -57,9 +56,8 @@ func TestRunBacksOffWhenIdleAndWakesOnNewMedia(t *testing.T) {
 			t.Fatal(err)
 		}
 		smtcCh := make(chan []smtc.Track)
-		spotifyCh := make(chan player.Track)
 		client := &reconnectClient{alive: true}
-		e := &Engine{Cfg: holder, smtcCh: smtcCh, spotifyCh: spotifyCh}
+		e := &Engine{Cfg: holder, smtcCh: smtcCh}
 		e.dial = func(string) (activityClient, error) { return client, nil }
 		ctx, cancel := context.WithCancel(context.Background())
 		done := make(chan struct{})
@@ -73,12 +71,6 @@ func TestRunBacksOffWhenIdleAndWakesOnNewMedia(t *testing.T) {
 		time.Sleep(2 * time.Second)
 		if got := every(); got != tickIdle {
 			t.Fatalf("no backoff after a quiet minute: %s", got)
-		}
-
-		// The Web API's "nothing playing" report is not activity.
-		spotifyCh <- player.Track{Source: "spotifyapi", Player: "Spotify", LastUpdated: time.Now()}
-		if got := every(); got != tickIdle {
-			t.Fatalf("untitled Spotify report woke the engine: %s", got)
 		}
 
 		smtcCh <- []smtc.Track{{AppID: "Spotify.exe", Title: "Song", Artist: "Artist", Playing: true, LastUpdated: time.Now()}}

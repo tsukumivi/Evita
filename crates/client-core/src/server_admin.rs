@@ -223,32 +223,38 @@ impl State {
 		if self.can_open_soundboard_settings(guild) {
 			return true;
 		}
-		channel
-			.or_else(|| {
-				self.voice
-					.active
-					.as_ref()
-					.filter(|call| call.guild == Some(guild))
-					.map(|call| call.channel)
-			})
-			.is_some_and(|channel| {
-				self.voice.active.as_ref().is_some_and(|call| {
-					call.channel == channel
-						&& call.guild == Some(guild)
-						&& matches!(
-							call.phase,
-							crate::voice::Phase::Connected | crate::voice::Phase::Waiting
-						) && !call.muted && !call.deafened
-						&& !call.server_muted
-						&& !call.server_deafened
-				}) && self.can_speak(channel)
-					&& self.permission(channel, p::USE_SOUNDBOARD) == Some(true)
-			})
+		let Some(channel) = channel.or_else(|| {
+			self.voice
+				.active
+				.as_ref()
+				.filter(|call| call.guild == Some(guild))
+				.map(|call| call.channel)
+		}) else {
+			return false;
+		};
+		let Some(call) = self.voice.active.as_ref().filter(|call| {
+			call.channel == channel
+				&& matches!(
+					call.phase,
+					crate::voice::Phase::Connected | crate::voice::Phase::Waiting
+				) && !call.muted
+				&& !call.deafened
+				&& !call.server_muted
+				&& !call.server_deafened
+		}) else {
+			return false;
+		};
+		let target_guild = call.guild;
+		let same_server = target_guild == Some(guild);
+		let source_server_joined = self.guild(guild).is_some();
+		let nitro = matches!(self.premium_type, 1..=3);
+		(source_server_joined && (same_server || nitro))
+			&& self.can_speak(channel)
+			&& self.permission(channel, p::USE_SOUNDBOARD) == Some(true)
 	}
-	pub fn can_play_guild_soundboard(&self, guild: Id, channel: Id, sound: Id) -> bool {
+	pub fn can_play_guild_soundboard(&self, source_guild: Id, channel: Id, sound: Id) -> bool {
 		self.voice.active.as_ref().is_some_and(|call| {
 			call.channel == channel
-				&& call.guild == Some(guild)
 				&& call.phase == crate::voice::Phase::Connected
 				&& !call.muted
 				&& !call.deafened
@@ -256,15 +262,19 @@ impl State {
 				&& !call.server_deafened
 		}) && self.can_speak(channel)
 			&& self.permission(channel, p::USE_SOUNDBOARD) == Some(true)
-			&& self.server_admin.guild == Some(guild)
+			&& self.guild(source_guild).is_some()
+			&& self.voice.active.as_ref().is_some_and(|call| {
+				call.guild == Some(source_guild) || matches!(self.premium_type, 1..=3)
+			}) && self.server_admin.guild == Some(source_guild)
 			&& self
 				.server_admin
 				.soundboard
 				.as_ref()
 				.is_some_and(|catalog| {
-					catalog.guild == guild
+					catalog.guild == source_guild
 						&& catalog.items.iter().any(|item| {
-							item.id == sound && item.available && item.guild_id == Some(guild)
+							item.id == sound
+								&& item.available && item.guild_id == Some(source_guild)
 						})
 				})
 	}
@@ -500,7 +510,11 @@ impl State {
 				channel,
 				sound,
 				source_guild,
-			} => *source_guild == guild && self.can_play_guild_soundboard(guild, *channel, *sound),
+			} => {
+				*source_guild == guild
+					&& self.can_read_soundboard(guild, Some(*channel))
+					&& self.can_play_guild_soundboard(guild, *channel, *sound)
+			}
 			Action::CreateSticker { .. } => self.can_create_guild_sticker(guild),
 			Action::EditSticker { id, .. } | Action::DeleteSticker { id } => {
 				self.can_edit_guild_sticker(guild, *id)
@@ -723,6 +737,7 @@ impl State {
 						source_guild,
 					} => {
 						*source_guild != event.guild
+							|| !self.can_read_soundboard(event.guild, Some(*channel))
 							|| !self.can_play_guild_soundboard(event.guild, *channel, *sound)
 					}
 					_ => true,

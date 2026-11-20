@@ -19,7 +19,6 @@ func TestSendUsesPlatformPresentation(t *testing.T) {
 		name, source, direct, lookup, wantURL string
 	}{
 		{"Spotify SMTC", "spotify", "", "https://music.apple.com/us/album/example/123?i=456", "https://open.spotify.com/search/fixture%20song%20fixture%20artist"},
-		{"Spotify API", "spotifyapi", "https://open.spotify.com/track/fixture", "", "https://open.spotify.com/track/fixture"},
 		{"Apple Music resolved", "applemusic", "", "https://music.apple.com/us/album/example/123?i=456", "https://music.apple.com/us/album/example/123?i=456"},
 		{"Apple Music unresolved", "applemusic", "", "", "https://music.apple.com/us/search?term=fixture+song+fixture+artist"},
 	} {

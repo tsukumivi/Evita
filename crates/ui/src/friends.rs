@@ -2,7 +2,9 @@
 use crate::{
 	MessagingUi, design,
 	icons::{self, Icon},
-	profiles, user_menu,
+	profiles,
+	shortcuts::ShortcutView,
+	user_menu,
 };
 use client_core::{Command, State};
 use egui::{Color32, RichText, vec2};
@@ -495,6 +497,8 @@ impl MessagingUi {
 			self.friend_requests_page(ui, state, commands);
 			return;
 		}
+		let shortcuts =
+			ShortcutView::new(&self.channel_preferences, self.shortcuts_available(state));
 		let voice_users = profiles::voice_users(state);
 		let mut selected = None;
 		egui::Frame::new()
@@ -776,7 +780,7 @@ impl MessagingUi {
 										user,
 										&mut self.profile,
 										&mut self.user_action,
-										None,
+										Some(shortcuts),
 									)
 								});
 							});

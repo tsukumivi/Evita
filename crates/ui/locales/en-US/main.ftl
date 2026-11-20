@@ -16,6 +16,14 @@ page-messaging-permissions = Messaging Permissions
 page-notifications = Notifications
 page-registered-games = Registered Games
 page-quests = Quests
+home-nitro = Nitro
+home-shop = Shop
+home-shop-promo = PROMO
+home-shop-description = Purchases and paid items are managed by Discord. Evita does not process payments.
+favorites-title = Favorites
+favorites-description = Bring your most-used channels and DMs together for quick access.
+favorites-empty-title = Your favorite conversations, all in one place.
+favorites-empty-description = Add channels or DMs from their menu to see them here.
 page-voice = Voice & Video
 page-keybinds = Keybinds
 page-storage = Data & Privacy
@@ -189,6 +197,21 @@ account-badge-webhook-description = Webhook author
 account-menu-account-identity-card-loading-profile = Loading profile…
 # Context: account_identity_card
 account-menu-account-identity-card-reload-profile = Reload profile
+# Context: account menu profile actions
+account-menu-badges = Badges
+# Context: account menu profile actions
+account-menu-copy-user-id = Copy User ID
+# Context: account menu Nitro card
+account-menu-nitro-sign-in-status = No Nitro subscription is reported for this account.
+# Context: account menu Nitro card
+account-menu-nitro-upload-limit = Uploads up to
+# Context: account menu Nitro card
+account-menu-nitro-message-limit = Messages up to
+# Context: account menu Nitro card
+account-menu-nitro-external-stickers = External stickers
+# Context: account menu Nitro card
+account-menu-nitro-profile-customizations = Profile customizations
+account-menu-nitro-supported-description = Your reported Discord subscription tier and the Nitro features currently supported in Evita.
 # Context: account_menu
 account-menu-account-menu-custom-status = Custom status
 # Context: account_menu
@@ -3427,7 +3450,13 @@ settings-quests-page-quest-home = Quest Home
 settings-quests-open-discord-quest-home = Open Discord Quest Home
 settings-quests-availability-and-rewards-are-managed-in-discord = Quest availability, progress, and rewards are managed by Discord.
 settings-quests-progress-unavailable = Progress unavailable from Discord.
-settings-quests-read-only-note = Quest data is read from Discord. Enrollment and reward claims are not supported yet.
+settings-quests-how-to-complete = Start a quest here, complete its listed task, then claim the reward when it is ready.
+settings-quests-start = Start Quest
+settings-quests-claim-reward = Claim Reward
+settings-quests-status-available = Available
+settings-quests-status-in-progress = In progress
+settings-quests-status-completed = Completed · reward ready
+settings-quests-status-claimed = Reward claimed
 settings-quests-open-discord = Open Discord
 settings-quests-open-discord-and-choose-discover-then-quests = In Discord, choose Discover, then Quests. Quest availability depends on your account and region.
 # Context: activity_settings

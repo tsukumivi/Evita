@@ -855,6 +855,8 @@ fn starter_row(
 								),
 								egui::Sense::hover(),
 								0.0,
+								avatars,
+								state.demo,
 							);
 							let time = timestamp(message.id);
 							ui.label(
@@ -3452,6 +3454,8 @@ impl TimelineView {
 														),
 														egui::Sense::click(),
 														0.0,
+														avatars,
+														state.demo,
 													)
 												},
 											)
@@ -3528,6 +3532,8 @@ impl TimelineView {
 															),
 															egui::Sense::click(),
 															48.0,
+															avatars,
+															state.demo,
 														)
 													},
 												)

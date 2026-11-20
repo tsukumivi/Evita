@@ -59,6 +59,29 @@ impl GroupMenu {
 		let enabled = (state.demo || state.gateway_connected)
 			&& !state.group_action_pending()
 			&& !state.user_action_pending();
+		let favorite = view.contains(Shortcut::Favorite, channel.id);
+		if ui
+			.add_enabled_ui(view.available(), |ui| {
+				row(
+					ui,
+					if favorite {
+						"channel-menu-context-remove-from-favorites"
+					} else {
+						"channel-menu-context-add-to-favorites"
+					},
+					colors.text,
+				)
+			})
+			.inner
+			.on_hover_text(crate::i18n::translate(
+				"channel-menu-context-favorites-are-saved-on-this-device",
+			))
+			.clicked()
+		{
+			self.pin_requested = Some(view.toggle(Shortcut::Favorite, channel.id));
+			ui.close();
+		}
+		ui.separator();
 		let pinned = view.contains(Shortcut::Pinned, channel.id);
 		if ui
 			.add_enabled_ui(view.available(), |ui| {

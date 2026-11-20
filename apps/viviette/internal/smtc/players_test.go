@@ -94,7 +94,7 @@ func TestUnknownPlayerNames(t *testing.T) {
 // The table must only use the six canonical sources (config.OrderSources),
 // without importing config into this package.
 func TestKnownPlayersUseCanonicalSources(t *testing.T) {
-	canonical := []string{"applemusic", "spotify", "spotifyapi", "youtubemusic", "browser", "generic"}
+	canonical := []string{"applemusic", "spotify", "youtubemusic", "browser", "generic"}
 	for _, p := range knownPlayers {
 		if !slices.Contains(canonical, p.source) || p.name == "" || len(p.ids)+len(p.contains) == 0 {
 			t.Errorf("bad entry %+v", p)

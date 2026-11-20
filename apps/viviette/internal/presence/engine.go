@@ -73,8 +73,7 @@ type Engine struct {
 	Art              artworkResolver
 	StateDir         string
 
-	smtcCh    <-chan []smtc.Track
-	spotifyCh <-chan player.Track
+	smtcCh <-chan []smtc.Track
 
 	mu                sync.Mutex
 	stateMu           sync.Mutex
@@ -82,7 +81,6 @@ type Engine struct {
 	ipcClientID       string
 	dial              func(string) (activityClient, error)
 	cur               *player.Track
-	spotify           *player.Track
 	lastSMTCSessions  []player.Track
 	identityAt        time.Time
 	lastIdentity      string
@@ -110,10 +108,10 @@ type Engine struct {
 	test              testCardState
 }
 
-func New(cfg *config.Holder, a *art.Resolver, smtcCh <-chan []smtc.Track, spotifyCh <-chan player.Track, stateDir string) *Engine {
+func New(cfg *config.Holder, a *art.Resolver, smtcCh <-chan []smtc.Track, stateDir string) *Engine {
 	return &Engine{
 		Cfg: cfg, Art: a,
-		smtcCh: smtcCh, spotifyCh: spotifyCh,
+		smtcCh:   smtcCh,
 		StateDir: stateDir,
 	}
 }
@@ -153,20 +151,6 @@ func (e *Engine) Run(ctx context.Context) {
 			if len(tracks) > 0 {
 				retick(true)
 			}
-		case tr, ok := <-e.spotifyCh:
-			if !ok {
-				e.spotifyCh = nil
-				e.mu.Lock()
-				e.spotify = nil
-				e.mu.Unlock()
-				continue
-			}
-			sp := tr
-			e.mu.Lock()
-			e.spotify = &sp
-			e.mu.Unlock()
-			// The Web API reports "nothing playing" as an untitled track on every poll.
-			retick(strings.TrimSpace(sp.Title) != "")
 		case <-tick.C:
 			e.step(time.Now())
 			retick(!e.quiet())
@@ -174,17 +158,16 @@ func (e *Engine) Run(ctx context.Context) {
 	}
 }
 
-// quiet reports whether a step has nothing to do: no media session, no Spotify
+// quiet reports whether a step has nothing to do: no media session,
 // track, no test card and nothing on the Discord profile. A card left up keeps
 // full speed so its idle clear is not delayed.
 func (e *Engine) quiet() bool {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	shown := e.published != nil && e.ipc != nil && e.ipc.Alive()
-	spotify := e.spotify != nil && strings.TrimSpace(e.spotify.Title) != ""
 	// A requested or showing test card must be sent and cleared on time.
 	testing := e.test.requested || e.test.card.State == "sending" || e.test.card.State == "shown"
-	return len(e.lastSMTCSessions) == 0 && !spotify && !shown && !testing
+	return len(e.lastSMTCSessions) == 0 && !shown && !testing
 }
 
 func (e *Engine) ingest(tracks []smtc.Track) {
@@ -230,15 +213,7 @@ func (e *Engine) pick(now time.Time) *player.Track {
 			sessions[i].Service, sessions[i].VideoID, sessions[i].Channel = c.Service, c.VideoID, c.Channel
 		}
 	}
-	sp := e.spotify
 	e.mu.Unlock()
-	if sp != nil && now.Sub(sp.LastUpdated) < 30*time.Second {
-		sessions = append(sessions, *sp)
-	} else if sp != nil && now.Sub(sp.LastUpdated) >= 30*time.Second {
-		e.mu.Lock()
-		e.spotify = nil
-		e.mu.Unlock()
-	}
 	return player.Arbitrate(sessions, cfg.Sources.Order, cfg.Sources.Blocked)
 }
 
@@ -649,7 +624,13 @@ func (e *Engine) send(t *player.Track, now time.Time) {
 	e.mu.Unlock()
 
 	assetImage := discordAssetURL(imageURL)
-	a.Assets = &discordipc.Assets{LargeImage: assetImage, LargeText: largeText, SmallImage: cfg.Discord.SmallImage, SmallText: cfg.Discord.AppName}
+	smallImage := discordAssetURL(cfg.Discord.SmallImage)
+	if assetImage == "" {
+		// A track without fetched artwork should still show Viviette's supplied mark instead of
+		// falling through to the registered Discord application's legacy artwork.
+		assetImage = smallImage
+	}
+	a.Assets = &discordipc.Assets{LargeImage: assetImage, LargeText: largeText, SmallImage: smallImage, SmallText: cfg.Discord.AppName}
 	if cfg.Buttons.Enabled {
 		if target := musicURL(t, listenURL, cfg.Buttons.SpotifySearch); target != "" {
 			label := cfg.Buttons.Label

@@ -8,13 +8,10 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"log"
-	"net/url"
 	"os"
-	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"strings"
@@ -29,7 +26,6 @@ import (
 	"viviette/internal/presence"
 	"viviette/internal/server"
 	"viviette/internal/smtc"
-	"viviette/internal/spotifyapi"
 	"viviette/internal/sysutil"
 	"viviette/internal/version"
 )
@@ -179,6 +175,11 @@ func serve() int {
 		_ = config.Save(holder.Get(), cfgPath)
 		log.Printf("config: wrote starter config to %s", cfgPath)
 	}
+	// Remove credentials from the retired Spotify Web API feature. Local OS media
+	// detection remains available and never reads these tokens.
+	for _, key := range []string{"spotify-refresh", "spotify-secret"} {
+		_ = credman.Delete(key) // Missing credentials are expected after the first launch.
+	}
 	cfg := holder.Get()
 	applyLogLevel(cfg.Log.Level)
 
@@ -198,15 +199,7 @@ func serve() int {
 	w.OnError(func(err error) { log.Printf("smtc: %v", err) })
 	go w.Run(ctx)
 
-	// The panel can connect or disconnect the Web API later, so the poller lives behind a manager.
-	spotify := spotifyapi.NewManager()
-	if cfg.Spotify.Mode == "api" && cfg.Spotify.ClientID != "" {
-		spotify.Start(cfg.Spotify.ClientID, cfg.Spotify.Market, time.Duration(cfg.Spotify.PollSecs)*time.Second)
-		log.Printf("spotify: api mode (poll %ds)", cfg.Spotify.PollSecs)
-	}
-	go func() { <-ctx.Done(); spotify.Stop() }()
-
-	eng := presence.New(holder, res, w.Out, spotify.Out(), dataDir)
+	eng := presence.New(holder, res, w.Out, dataDir)
 
 	panelLive := false
 	if cfg.Server.Enabled {
@@ -216,7 +209,6 @@ func serve() int {
 		} else if base, err := server.Start(server.Deps{
 			Engine: eng, Cfg: holder, CfgPath: cfgPath, Token: tok,
 			DiscordApp: cfg.Discord.AppName,
-			Spotify:    spotify, SpotifyLink: &spotifyapi.Link{}, OpenURL: openURL,
 		}, cfg.Server.Port); err == nil {
 			log.Printf("dashboard: %s (session token redacted)", base)
 			endpointPath := dashboardEndpointPath(dataDir)
@@ -326,11 +318,6 @@ func doctor() int {
 	fmt.Printf("art cache: %s\n", cacheDir)
 	fmt.Printf("data dir:  %s\n", dataDir)
 	fmt.Printf("autostart: %v\n", sysutil.AutostartEnabled())
-	if spotifyapi.HasRefreshToken() {
-		fmt.Println("spotify: refresh token stored (api mode available)")
-	} else {
-		fmt.Println("spotify: system mode (no Web API token stored)")
-	}
 	return 0
 }
 
@@ -367,36 +354,6 @@ func setup() int {
 		fmt.Println("client_id is required for presence to appear.")
 		return 1
 	}
-	fmt.Println()
-	fmt.Println("2) Optional: Spotify Web API for richer data (track links, exact art).")
-	fmt.Println("   Needs your own Spotify developer app (client id + secret). Leave blank to skip.")
-	if cid := prompt("Spotify client id", ""); trim(cid) != "" {
-		fmt.Print("Spotify client secret: ")
-		line, _ := rd.ReadString('\n')
-		secret := trim(line)
-		port := "8977"
-		fmt.Println("Opening browser for Spotify authorization…")
-		state, err := spotifyapi.NewOAuthState()
-		if err != nil {
-			fmt.Println("spotify setup failed:", err)
-			return 1
-		}
-		openBrowser(spotifyapi.AuthorizeURL(cid, port, state))
-		code, err := spotifyapi.WaitForCode(port, state)
-		if err != nil {
-			fmt.Println("spotify setup failed:", err)
-		} else {
-			p := spotifyapi.New(cid, 12*time.Second)
-			if err := p.Exchange(code, port); err != nil {
-				fmt.Println("spotify token exchange failed:", err)
-			} else {
-				_ = credman.Set("spotify-secret", secret)
-				cfg.Spotify.Mode = "api"
-				cfg.Spotify.ClientID = cid
-				fmt.Println("spotify: connected (refresh token stored in Credential Manager)")
-			}
-		}
-	}
 	if err := config.Save(cfg, cfgPath); err != nil {
 		fmt.Println("save config:", err)
 		return 1
@@ -411,23 +368,4 @@ func trim(s string) string {
 		s = s[:len(s)-1]
 	}
 	return s
-}
-
-// openURL hands an https URL to the system browser; the panel's WebView never opens it.
-func openURL(raw string) error {
-	u, err := url.Parse(raw)
-	if err != nil || u.Scheme != "https" {
-		return errors.New("only https URLs open in the browser")
-	}
-	return exec.Command("rundll32", "url.dll,FileProtocolHandler", raw).Start()
-}
-
-func openBrowser(raw string) {
-	if _, err := url.Parse(raw); err != nil {
-		return
-	}
-
-	if err := exec.Command("rundll32", "url.dll,FileProtocolHandler", raw).Start(); err != nil {
-		fmt.Println("open browser failed:", err, "— visit:", raw)
-	}
 }

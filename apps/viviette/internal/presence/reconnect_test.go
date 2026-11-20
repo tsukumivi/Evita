@@ -111,15 +111,13 @@ func TestPresentationSettingsRefreshUnchangedTrackAfterRateGate(t *testing.T) {
 func TestRunDisablesClosedInputChannels(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		smtcCh := make(chan []smtc.Track)
-		spotifyCh := make(chan player.Track)
 		close(smtcCh)
-		close(spotifyCh)
-		e := &Engine{smtcCh: smtcCh, spotifyCh: spotifyCh, lastSMTCSessions: []player.Track{{Title: "stale"}}, spotify: &player.Track{Title: "stale"}}
+		e := &Engine{smtcCh: smtcCh, lastSMTCSessions: []player.Track{{Title: "stale"}}}
 		ctx, cancel := context.WithCancel(context.Background())
 		done := make(chan struct{})
 		go func() { e.Run(ctx); close(done) }()
 		synctest.Wait()
-		if e.smtcCh != nil || e.spotifyCh != nil || e.spotify != nil || len(e.lastSMTCSessions) != 0 {
+		if e.smtcCh != nil || len(e.lastSMTCSessions) != 0 {
 			t.Fatal("closed input remains selectable")
 		}
 		cancel()

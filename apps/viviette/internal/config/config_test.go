@@ -172,14 +172,14 @@ func TestReloadReportsUnchangedConfig(t *testing.T) {
 
 func TestSourceMigration(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "old.toml")
-	if err := os.WriteFile(path, []byte("[sources]\norder = [\"generic\", \"spotifyapi\", \"browser\", \"spotify\", \"applemusic\"]\n"), 0600); err != nil {
+	if err := os.WriteFile(path, []byte("[sources]\norder = [\"generic\", \"browser\", \"spotify\", \"applemusic\"]\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	c, err := Load(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"generic", "spotifyapi", "youtubemusic", "browser", "spotify", "applemusic"}
+	want := []string{"generic", "youtubemusic", "browser", "spotify", "applemusic"}
 	if !reflect.DeepEqual(c.Sources.Order, want) || !reflect.DeepEqual(c.Sources.Known, ToggleKeys) || !reflect.DeepEqual(c.Sources.Blocked, []string{"youtube", "youtube_tabs", "twitch"}) {
 		t.Fatalf("migration: %+v", c.Sources)
 	}
@@ -201,8 +201,8 @@ func TestSourceMigration(t *testing.T) {
 		t.Fatal("defaults missing known keys")
 	}
 	for _, tc := range []struct{ order, want []string }{
-		{[]string{"spotify", "generic", "custom"}, []string{"spotify", "generic", "applemusic", "spotifyapi", "youtubemusic", "browser"}}, // unknown entries are dropped
-		{[]string{"youtubemusic", "browser"}, []string{"youtubemusic", "browser", "applemusic", "spotify", "spotifyapi", "generic"}},
+		{[]string{"spotify", "generic", "custom"}, []string{"spotify", "generic", "applemusic", "youtubemusic", "browser"}}, // unknown entries are dropped
+		{[]string{"youtubemusic", "browser"}, []string{"youtubemusic", "browser", "applemusic", "spotify", "generic"}},
 	} {
 		c := Defaults()
 		c.Sources.Known = nil
@@ -221,31 +221,31 @@ func TestSourceMigrationReviewFixtures(t *testing.T) {
 	}{
 		{
 			name: "legacy custom order and explicit blocks",
-			fixture: `order = ["generic", "spotifyapi", "browser", "spotify", "applemusic"]
+			fixture: `order = ["generic", "browser", "spotify", "applemusic"]
 blocked = ["SPOTIFY", "custom.app"]`,
-			order:   []string{"generic", "spotifyapi", "youtubemusic", "browser", "spotify", "applemusic"},
+			order:   []string{"generic", "youtubemusic", "browser", "spotify", "applemusic"},
 			blocked: []string{"SPOTIFY", "custom.app", "youtube", "youtube_tabs", "twitch"},
 		},
 		{
 			name: "existing duplicates are not multiplied",
-			fixture: `order = ["applemusic", "spotify", "spotifyapi", "youtubemusic", "youtubemusic", "browser", "generic"]
+			fixture: `order = ["applemusic", "spotify", "youtubemusic", "youtubemusic", "browser", "generic"]
 blocked = ["browser", "browser"]
-known = ["applemusic", "spotify", "spotifyapi", "youtubemusic", "youtubemusic", "browser", "generic"]`,
-			order:   []string{"applemusic", "spotify", "spotifyapi", "youtubemusic", "browser", "generic"},
+known = ["applemusic", "spotify", "youtubemusic", "youtubemusic", "browser", "generic"]`,
+			order:   []string{"applemusic", "spotify", "youtubemusic", "browser", "generic"},
 			blocked: []string{"browser", "browser", "youtube", "youtube_tabs", "twitch"},
 		},
 		{
 			name: "unknown order entry",
-			fixture: `order = ["generic", "spotifyapi", "custom", "browser", "spotify", "applemusic"]
+			fixture: `order = ["generic", "custom", "browser", "spotify", "applemusic"]
 blocked = []`,
-			order:   []string{"generic", "spotifyapi", "youtubemusic", "browser", "spotify", "applemusic"},
+			order:   []string{"generic", "youtubemusic", "browser", "spotify", "applemusic"},
 			blocked: []string{"youtube", "youtube_tabs", "twitch"},
 		},
 		{
 			name: "case and space order variant",
-			fixture: `order = ["generic", " Spotify ", "browser", "spotify", "applemusic", "spotifyapi"]
+			fixture: `order = ["generic", " Spotify ", "browser", "spotify", "applemusic"]
 blocked = []`,
-			order:   []string{"generic", "spotify", "youtubemusic", "browser", "applemusic", "spotifyapi"},
+			order:   []string{"generic", "spotify", "youtubemusic", "browser", "applemusic"},
 			blocked: []string{"youtube", "youtube_tabs", "twitch"},
 		},
 		{
@@ -257,18 +257,18 @@ blocked = []`,
 		},
 		{
 			name: "known music missing from order",
-			fixture: `order = ["generic", "spotifyapi", "browser", "spotify", "applemusic"]
+			fixture: `order = ["generic", "browser", "spotify", "applemusic"]
 blocked = []
-known = ["applemusic", "spotify", "spotifyapi", "youtubemusic", "browser", "generic"]`,
-			order:   []string{"generic", "spotifyapi", "youtubemusic", "browser", "spotify", "applemusic"},
+known = ["applemusic", "spotify", "youtubemusic", "browser", "generic"]`,
+			order:   []string{"generic", "youtubemusic", "browser", "spotify", "applemusic"},
 			blocked: []string{"youtube", "youtube_tabs", "twitch"},
 		},
 		{
 			name: "case variant legacy blocks",
-			fixture: `order = ["applemusic", "spotify", "spotifyapi", "browser", "generic"]
+			fixture: `order = ["applemusic", "spotify", "browser", "generic"]
 blocked = ["YouTube", " Browser ", "GENERIC"]
 known = []`,
-			order:   []string{"applemusic", "spotify", "spotifyapi", "youtubemusic", "browser", "generic"},
+			order:   []string{"applemusic", "spotify", "youtubemusic", "browser", "generic"},
 			blocked: []string{"YouTube", " Browser ", "GENERIC", "youtube_tabs", "twitch"},
 		},
 	} {

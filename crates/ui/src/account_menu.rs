@@ -222,7 +222,7 @@ impl MessagingUi {
 	) {
 		let colors = design::palette(ui);
 		let (banner, _) =
-			ui.allocate_exact_size(vec2(ui.available_width(), 64.0), egui::Sense::hover());
+			ui.allocate_exact_size(vec2(ui.available_width(), 104.0), egui::Sense::hover());
 		let corner = egui::CornerRadius {
 			nw: 10,
 			ne: 10,
@@ -241,15 +241,15 @@ impl MessagingUi {
 		}
 		if let Some(user) = &state.user {
 			let avatar = egui::Rect::from_min_size(
-				banner.left_bottom() + vec2(14.0, -38.0),
-				vec2(72.0, 72.0),
+				banner.left_bottom() + vec2(14.0, -42.0),
+				vec2(80.0, 80.0),
 			);
 			// Thick popover-coloured ring, as Discord punches the avatar out of the banner.
 			ui.painter()
-				.circle_filled(avatar.center(), 42.0, colors.raised);
+				.circle_filled(avatar.center(), 45.0, colors.raised);
 			ui.scope_builder(egui::UiBuilder::new().max_rect(avatar), |ui| {
 				self.avatars.with_avatar_animation(true, |avatars| {
-					avatars.show(ui, user, 72.0, state.demo)
+					avatars.show(ui, user, 80.0, state.demo)
 				});
 			});
 			// Same 6 px ring as the avatar, so the dot is cut out of the banner alike.
@@ -296,9 +296,12 @@ impl MessagingUi {
 				}
 				ui.add_space(8.0);
 				ui.spacing_mut().item_spacing.y = 2.0;
-				self.account_status_row(ui);
+				self.account_profile_actions(ui, state);
 				self.account_custom_status_row(ui);
+				ui.add_space(6.0);
+				self.account_nitro_card(ui, state);
 				self.account_switcher(ui, state);
+				self.account_copy_id_row(ui, state);
 			});
 	}
 
@@ -500,28 +503,77 @@ impl MessagingUi {
 				ui.set_width(ui.available_width());
 				ui.spacing_mut().item_spacing.y = 2.0;
 				let profile = state.own_profile.data.as_ref();
+				let user = state.user.as_ref();
 				let name = profile
 					.and_then(|p| p.global_name.as_deref())
-					.or_else(|| state.user.as_ref().map(|u| u.name.as_str()))
+					.or_else(|| user.map(|u| u.name.as_str()))
 					.map(str::to_owned)
 					.unwrap_or_else(|| crate::i18n::translate("your-account"));
-				ui.add(
-					egui::Label::new(design::semibold(ui, &name, 20.0).color(colors.text_strong))
-						.wrap(),
-				);
-				if let Some(profile) = profile {
+				if let Some(user) = user {
+					crate::name_styles::label(
+						ui,
+						crate::name_styles::style(user),
+						&name,
+						egui::FontId::new(20.0, design::semibold_family(ui.ctx())),
+						None,
+						colors.base,
+						colors.text_strong,
+						egui::Sense::hover(),
+						true,
+					);
+				} else {
 					ui.add(
 						egui::Label::new(
-							design::medium(ui, &profile.username, 14.0).color(colors.muted),
+							design::semibold(ui, &name, 20.0).color(colors.text_strong),
 						)
 						.wrap(),
 					);
-					if !profile.pronouns.is_empty() {
+				}
+				if let Some(profile) = profile {
+					ui.horizontal_wrapped(|ui| {
+						ui.spacing_mut().item_spacing.x = 6.0;
 						ui.add(
 							egui::Label::new(
+								design::medium(ui, &profile.username, 13.0).color(colors.muted),
+							)
+							.truncate(),
+						);
+						if let Some(tag) = profile.clan.as_ref() {
+							profiles::server_tag(ui, tag, &mut self.avatars, state.demo);
+						}
+						if !profile.pronouns.is_empty() {
+							ui.label(
 								RichText::new(&profile.pronouns)
 									.size(12.0)
 									.color(colors.muted),
+							);
+						}
+					});
+					let catalog = profile.badge_catalog.as_deref();
+					let badges = model::badges::displayed_badges(&profile.badges, catalog);
+					if !badges.is_empty() {
+						ui.add_space(5.0);
+						ui.horizontal_wrapped(|ui| {
+							ui.spacing_mut().item_spacing = vec2(4.0, 3.0);
+							for badge in badges.iter().take(8) {
+								crate::badges::badge_icon(
+									ui,
+									&mut self.avatars,
+									badge,
+									catalog,
+									20.0,
+									state.demo,
+								);
+							}
+						});
+					}
+					if !profile.bio.trim().is_empty() {
+						ui.add_space(8.0);
+						ui.add(
+							egui::Label::new(
+								RichText::new(profile.bio.trim())
+									.size(13.0)
+									.color(colors.text),
 							)
 							.wrap(),
 						);
@@ -568,6 +620,169 @@ impl MessagingUi {
 					}
 				}
 			});
+	}
+
+	/// Shows the signed-in account's reported tier and Nitro-related features Evita supports.
+	pub(super) fn nitro_home_page(&mut self, ui: &mut egui::Ui, state: &State) {
+		let colors = design::palette(ui);
+		ui.vertical(|ui| {
+			ui.label(
+				design::semibold(ui, crate::i18n::translate("home-nitro"), 24.0)
+					.color(colors.text_strong),
+			);
+			ui.add_space(4.0);
+			ui.label(
+				RichText::new(crate::i18n::translate(
+					"account-menu-nitro-supported-description",
+				))
+				.color(colors.muted),
+			);
+			ui.add_space(20.0);
+			self.account_nitro_card(ui, state);
+		});
+	}
+
+	/// Shows the signed-in account's reported tier and Nitro-related features Evita supports.
+	fn account_nitro_card(&mut self, ui: &mut egui::Ui, state: &State) {
+		let colors = design::palette(ui);
+		let tier = match state.premium_type {
+			1 => "Nitro Classic",
+			2 => "Nitro",
+			3 => "Nitro Basic",
+			_ => "No active Nitro subscription",
+		};
+		let mib = state.upload_limit() / (1024 * 1024);
+		let limit = state.content_limit();
+		let external_stickers = state.stickers.external_allowed;
+		let cosmetics = state
+			.user
+			.as_ref()
+			.and_then(|user| user.cosmetics.as_deref())
+			.is_some_and(|cosmetics| {
+				cosmetics.decoration.is_some()
+					|| cosmetics.nameplate.is_some()
+					|| cosmetics.name_style.is_some()
+			});
+		let custom_profile = cosmetics
+			|| state.own_profile.data.as_ref().is_some_and(|profile| {
+				profile.banner.is_some()
+					|| profile.clan.is_some()
+					|| !profile.badges.is_empty()
+					|| profile.effect_sku.is_some()
+					|| profile.frame_sku.is_some()
+			});
+		let (rect, _) =
+			ui.allocate_exact_size(vec2(ui.available_width(), 68.0), egui::Sense::hover());
+		ui.painter().rect_filled(rect, 8, colors.base);
+		ui.scope_builder(
+			egui::UiBuilder::new().max_rect(rect.shrink2(vec2(12.0, 8.0))),
+			|ui| {
+				ui.set_width(ui.available_width());
+				ui.spacing_mut().item_spacing.y = 3.0;
+				ui.horizontal(|ui| {
+					ui.label(design::semibold(ui, "Nitro", 14.0).color(colors.text_strong));
+					ui.label(RichText::new(tier).size(12.0).color(colors.accent));
+				});
+				if state.premium_type == 0 {
+					ui.label(
+						RichText::new(crate::i18n::translate("account-menu-nitro-sign-in-status"))
+							.size(12.0)
+							.color(colors.muted),
+					);
+				} else {
+					let mut features = vec![format!(
+						"{} {mib} MB",
+						crate::i18n::translate("account-menu-nitro-upload-limit")
+					)];
+					if limit > 2000 {
+						features.push(format!(
+							"{} {limit}",
+							crate::i18n::translate("account-menu-nitro-message-limit")
+						));
+					}
+					if external_stickers {
+						features.push(crate::i18n::translate(
+							"account-menu-nitro-external-stickers",
+						));
+					}
+					if custom_profile {
+						features.push(crate::i18n::translate(
+							"account-menu-nitro-profile-customizations",
+						));
+					}
+					ui.add(
+						egui::Label::new(
+							RichText::new(features.join(" · "))
+								.size(11.0)
+								.color(colors.muted),
+						)
+						.wrap(),
+					);
+				}
+			},
+		);
+	}
+
+	/// Account actions shown below profile activity, matching the compact Discord popout menu.
+	fn account_profile_actions(&mut self, ui: &mut egui::Ui, state: &State) {
+		let colors = design::palette(ui);
+		let Some(user) = state.user.as_ref() else {
+			return;
+		};
+		let edit = self.account_action_row(ui, icons::Icon::Pencil, "profiles-show-edit-profile");
+		if edit.clicked() {
+			self.preview_settings("profile");
+			self.account_menu.close = true;
+		}
+		self.account_status_row(ui);
+		let badges = self.account_action_row(ui, icons::Icon::Verified, "account-menu-badges");
+		if badges.clicked() {
+			self.profile.open_full(user.clone());
+			self.account_menu.close = true;
+		}
+		let (divider, _) =
+			ui.allocate_exact_size(vec2(ui.available_width(), 1.0), egui::Sense::hover());
+		ui.painter().rect_filled(divider, 0, colors.border);
+		ui.add_space(5.0);
+	}
+
+	fn account_copy_id_row(&mut self, ui: &mut egui::Ui, state: &State) {
+		let Some(user) = state.user.as_ref() else {
+			return;
+		};
+		let id = user.id.to_string();
+		let copy = self.account_action_row(ui, icons::Icon::Copy, "account-menu-copy-user-id");
+		if copy.clicked() {
+			ui.ctx().copy_text(id);
+			self.account_menu.close = true;
+		}
+	}
+
+	fn account_action_row(
+		&self,
+		ui: &mut egui::Ui,
+		icon: icons::Icon,
+		label_key: &str,
+	) -> egui::Response {
+		let colors = design::palette(ui);
+		let label = crate::i18n::translate(label_key);
+		let row = ui.add_sized(
+			[ui.available_width(), 38.0],
+			egui::Button::new(())
+				.left_text(design::medium(ui, label, 13.0).color(colors.text_strong))
+				.frame_when_inactive(false)
+				.corner_radius(6),
+		);
+		icons::paint(
+			ui.painter(),
+			icon,
+			egui::Rect::from_center_size(
+				egui::pos2(row.rect.left() + 17.0, row.rect.center().y),
+				egui::Vec2::splat(16.0),
+			),
+			colors.muted,
+		);
+		row
 	}
 
 	/// Presence row: status dot, label and a chevron opening the status menu.
@@ -1123,6 +1338,22 @@ mod tests {
 			for _ in 0..3 {
 				frame(&ctx, &mut view, &mut state, size, vec![]);
 			}
+			frame(
+				&ctx,
+				&mut view,
+				&mut state,
+				size,
+				vec![
+					Event::PointerMoved(Pos2::new(170.0, 260.0)),
+					Event::MouseWheel {
+						unit: egui::MouseWheelUnit::Point,
+						delta: vec2(0.0, -360.0),
+						modifiers: egui::Modifiers::NONE,
+						phase: egui::TouchPhase::Move,
+						source: egui::MouseWheelSource::Unknown,
+					},
+				],
+			);
 			let text = frame(&ctx, &mut view, &mut state, size, vec![]);
 			let listed = |label: &str| text.iter().any(|(value, _)| value == label);
 			assert!(listed("SWITCH ACCOUNTS"));
@@ -1225,6 +1456,22 @@ mod tests {
 				state.own_profile.data = Some(profiles::synthetic(&own, None));
 				let mut view = MessagingUi::default();
 				frame(&ctx, &mut view, &mut state, size, vec![]);
+				frame(
+					&ctx,
+					&mut view,
+					&mut state,
+					size,
+					vec![
+						Event::PointerMoved(Pos2::new(170.0, 360.0)),
+						Event::MouseWheel {
+							unit: egui::MouseWheelUnit::Point,
+							delta: vec2(0.0, -200.0),
+							modifiers: egui::Modifiers::NONE,
+							phase: egui::TouchPhase::Move,
+							source: egui::MouseWheelSource::Unknown,
+						},
+					],
+				);
 				let text = frame(&ctx, &mut view, &mut state, size, vec![]);
 				if light {
 					for key in [egui::Key::Tab, egui::Key::Enter] {

@@ -87,9 +87,14 @@ impl ChannelPreferences {
 		channel.id.0 != 0 && channel.guild.is_none() && matches!(channel.kind, 1 | 3)
 	}
 
-	/// Server favorites are guild channels that are not categories.
+	/// Favorites can contain server channels and one-to-one or group conversations.
 	pub fn can_favorite(channel: &Channel) -> bool {
-		channel.id.0 != 0 && channel.guild.is_some() && channel.kind != 4
+		channel.id.0 != 0
+			&& if channel.guild.is_some() {
+				channel.kind != 4
+			} else {
+				matches!(channel.kind, 1 | 3)
+			}
 	}
 
 	/// Idempotent. Turning a shortcut on inserts it at the front of its list.

@@ -233,6 +233,15 @@ fn quest_text(ui: &mut egui::Ui, quest: &model::Quest, colors: design::Palette) 
 }
 
 impl MessagingUi {
+	pub(super) fn quests_home_page(
+		&mut self,
+		ui: &mut egui::Ui,
+		state: &mut State,
+		commands: &mut Vec<client_core::Command>,
+	) {
+		self.quests_settings(ui, state, commands);
+	}
+
 	pub(super) fn open_extension_settings(&mut self, view: extensions::AppView) {
 		self.settings.page = match view {
 			extensions::AppView::Settings => Page::General,
@@ -1373,9 +1382,10 @@ impl MessagingUi {
 			ui.heading(crate::i18n::translate("settings-quests-page-quest-home"));
 			ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
 				if ui
-					.add_enabled_ui(!state.demo && !state.quests.loading, |ui| {
-						design::button(ui, "Refresh", design::ButtonKind::Outline)
-					})
+					.add_enabled_ui(
+						!state.demo && !state.quests.loading && !state.quests.action_pending,
+						|ui| design::button(ui, "Refresh", design::ButtonKind::Outline),
+					)
 					.inner
 					.clicked() && let Some(command) = state.quests.request(true)
 				{
@@ -1386,9 +1396,13 @@ impl MessagingUi {
 		ui.add_space(12.0);
 		design::hint(
 			ui,
-			&crate::i18n::translate_if_key("settings-quests-read-only-note"),
+			&crate::i18n::translate_if_key("settings-quests-how-to-complete"),
 		);
 		ui.add_space(8.0);
+		if let Some(error) = state.quests.action_error {
+			design::notice(ui, design::Level::Error, error.label());
+			ui.add_space(8.0);
+		}
 		if state.quests.loading {
 			ui.horizontal(|ui| {
 				ui.add(egui::Spinner::new());
@@ -1407,6 +1421,7 @@ impl MessagingUi {
 				design::hint(ui, "Your account has no quests available right now.");
 			});
 		} else {
+			let mut requested_action = None;
 			for quest in &state.quests.items {
 				design::group(ui, &quest.title, |ui| {
 					if let Some(url) = &quest.image {
@@ -1427,8 +1442,46 @@ impl MessagingUi {
 					} else {
 						quest_text(ui, quest, colors);
 					}
+					ui.horizontal(|ui| {
+						let status = if quest.claimed {
+							"settings-quests-status-claimed"
+						} else if quest.completed {
+							"settings-quests-status-completed"
+						} else if quest.enrolled {
+							"settings-quests-status-in-progress"
+						} else {
+							"settings-quests-status-available"
+						};
+						ui.label(crate::i18n::translate_if_key(status));
+						let action = if quest.completed && !quest.claimed {
+							Some((
+								client_core::quests::Action::ClaimReward,
+								"settings-quests-claim-reward",
+							))
+						} else if !quest.enrolled {
+							Some((client_core::quests::Action::Enroll, "settings-quests-start"))
+						} else {
+							None
+						};
+						if let Some((action, label)) = action {
+							let response = ui.add_enabled(
+								!state.demo && !state.quests.action_pending,
+								egui::Button::new(crate::i18n::translate_if_key(label)),
+							);
+							if response.clicked() {
+								requested_action = Some((quest.id.clone(), action));
+							}
+						} else if state.quests.action_pending {
+							ui.add(egui::Spinner::new());
+						}
+					});
 				});
 				ui.add_space(8.0);
+			}
+			if let Some((id, action)) = requested_action
+				&& let Some(command) = state.quests.request_action(&id, action)
+			{
+				commands.push(command);
 			}
 		}
 	}

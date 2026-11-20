@@ -259,6 +259,16 @@ pub enum VivietteLaunchStatus {
 	Failed,
 }
 
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+enum HomePage {
+	#[default]
+	Friends,
+	Favorites,
+	Nitro,
+	Shop,
+	Quests,
+}
+
 #[derive(Default)]
 pub struct MessagingUi {
 	poll_creator: polls::Creator,
@@ -309,6 +319,9 @@ pub struct MessagingUi {
 	server_emoji_sequence: u64,
 	server_sticker_sequence: u64,
 	server_soundboard_sequence: u64,
+	/// Currently selected source server in the voice soundboard picker.
+	soundboard_source_guild: Option<Id>,
+	home_page: HomePage,
 	activity_picker_open: bool,
 	activity_search_query: String,
 	server_role_icon_sequence: u64,
@@ -1870,10 +1883,6 @@ impl MessagingUi {
 										egui::Layout::left_to_right(egui::Align::Center),
 										|ui| {
 											ui.spacing_mut().item_spacing.x = 5.0;
-											let server_tag = member.user.primary_guild.as_deref();
-											let trailing =
-												profiles::server_tag_width(ui, server_tag)
-													+ if server_tag.is_some() { 5.0 } else { 0.0 };
 											account_badge::server_member_name(
 												ui,
 												&member.user,
@@ -1889,16 +1898,10 @@ impl MessagingUi {
 													},
 												),
 												egui::Sense::hover(),
-												trailing,
+												0.0,
+												&mut self.avatars,
+												state.demo,
 											);
-											if let Some(tag) = server_tag {
-												profiles::server_tag(
-													ui,
-													tag,
-													&mut self.avatars,
-													state.demo,
-												);
-											}
 										},
 									);
 								};
@@ -2047,47 +2050,68 @@ impl MessagingUi {
 			.show(ui, |ui| {
 				let ctx = ui.ctx().clone();
 				if self.guild.is_none() {
-					// Search and Friends share one row; Friends is the compact glyph beside it.
-					ui.horizontal(|ui| {
-						ui.spacing_mut().item_spacing.x = 6.0;
-						let find = ui
-							.add_enabled_ui(
-								!self.ime_active
-									&& !ctx.input(|input| {
-										input
-											.events
-											.iter()
-											.any(|event| matches!(event, egui::Event::Ime(_)))
-									}),
-								|ui| {
-									ui.add_sized(
-										[(ui.available_width() - 36.0).max(60.0), 30.0],
-										egui::Button::new(language.text("find-conversation"))
-											.truncate(),
-									)
-								},
-							)
-							.inner
-							.on_hover_text(language.text("find-conversation-tooltip"));
-						find.widget_info(|| {
-							egui::WidgetInfo::labeled(
-								egui::Role::Button,
-								ui.is_enabled(),
-								language.text("find-conversation"),
-							)
-						});
-						if find.clicked() {
-							self.switcher.open(&ctx);
-						}
-						let friends = state.selected.is_none();
+					let find = ui
+						.add_enabled_ui(
+							!self.ime_active
+								&& !ctx.input(|input| {
+									input
+										.events
+										.iter()
+										.any(|event| matches!(event, egui::Event::Ime(_)))
+								}),
+							|ui| {
+								ui.add_sized(
+									[ui.available_width(), 30.0],
+									egui::Button::new(language.text("find-conversation"))
+										.truncate(),
+								)
+							},
+						)
+						.inner
+						.on_hover_text(language.text("find-conversation-tooltip"));
+					find.widget_info(|| {
+						egui::WidgetInfo::labeled(
+							egui::Role::Button,
+							ui.is_enabled(),
+							language.text("find-conversation"),
+						)
+					});
+					if find.clicked() {
+						self.switcher.open(&ctx);
+					}
+					ui.add_space(8.0);
+					for (page, label, icon) in [
+						(
+							HomePage::Friends,
+							language.text("friends"),
+							icons::Icon::People,
+						),
+						(
+							HomePage::Nitro,
+							language.text("home-nitro"),
+							icons::Icon::Crown,
+						),
+						(
+							HomePage::Shop,
+							language.text("home-shop"),
+							icons::Icon::ShoppingCart,
+						),
+						(
+							HomePage::Quests,
+							language.text("page-quests"),
+							icons::Icon::Star,
+						),
+					] {
+						let selected = self.home_page == page && state.selected.is_none();
+						let width = ui.available_width();
 						let (rect, response) =
-							ui.allocate_exact_size(egui::vec2(30.0, 30.0), egui::Sense::click());
+							ui.allocate_exact_size(egui::vec2(width, 32.0), egui::Sense::click());
 						let hovered = response.hovered() || response.has_focus();
-						if friends || hovered {
+						if selected || hovered {
 							ui.painter().rect_filled(
 								rect,
 								6,
-								if friends {
+								if selected {
 									colors.selected
 								} else {
 									colors.hover
@@ -2096,28 +2120,57 @@ impl MessagingUi {
 						}
 						icons::paint(
 							ui.painter(),
-							icons::Icon::People,
-							rect.shrink(7.0),
-							if friends || hovered {
+							icon,
+							egui::Rect::from_center_size(
+								egui::pos2(rect.left() + 16.0, rect.center().y),
+								egui::vec2(18.0, 18.0),
+							),
+							if selected || hovered {
 								colors.text_strong
 							} else {
 								colors.muted
 							},
 						);
+						ui.painter().text(
+							egui::pos2(rect.left() + 32.0, rect.center().y),
+							egui::Align2::LEFT_CENTER,
+							&label,
+							egui::FontId::new(14.0, crate::design::body_family(ui.ctx())),
+							if selected || hovered {
+								colors.text_strong
+							} else {
+								colors.text
+							},
+						);
+						if page == HomePage::Shop {
+							let promo = egui::Rect::from_center_size(
+								egui::pos2(rect.right() - 38.0, rect.center().y),
+								egui::vec2(52.0, 18.0),
+							);
+							ui.painter().rect_filled(promo, 9, colors.raised);
+							ui.painter().text(
+								promo.center(),
+								egui::Align2::CENTER_CENTER,
+								language.text("home-shop-promo"),
+								egui::FontId::new(9.0, crate::design::semibold_family(ui.ctx())),
+								colors.text_strong,
+							);
+						}
 						response.widget_info(|| {
 							egui::WidgetInfo::selected(
 								egui::Role::Button,
 								true,
-								friends,
-								language.text("friends"),
+								selected,
+								label.clone(),
 							)
 						});
-						if response.on_hover_text(language.text("friends")).clicked() {
-							state.open_home();
+						if response.on_hover_text(&label).clicked() && !selected {
+							self.home_page = page;
 							self.guild = None;
+							state.open_home();
 							self.search.open = false;
 						}
-					});
+					}
 					ui.add_space(8.0);
 				}
 				if let Some(guild) = self.guild
@@ -4828,10 +4881,19 @@ impl MessagingUi {
 				.and_then(|id| state.channel(id))
 				.and_then(|channel| channel.guild);
 		}
-		let title = self
-			.guild
-			.and_then(|id| state.guild(id))
-			.map_or_else(|| language.text("direct-messages"), |g| g.name.clone());
+		let title = if self.guild.is_none() && state.selected.is_none() {
+			match self.home_page {
+				HomePage::Friends => language.text("friends"),
+				HomePage::Favorites => language.text("favorites-title"),
+				HomePage::Nitro => language.text("home-nitro"),
+				HomePage::Shop => language.text("home-shop"),
+				HomePage::Quests => language.text("page-quests"),
+			}
+		} else {
+			self.guild
+				.and_then(|id| state.guild(id))
+				.map_or_else(|| language.text("direct-messages"), |g| g.name.clone())
+		};
 		if self.shows_title_bar() {
 			self.title_bar(ui, state, &mut commands, &title);
 		}
@@ -5166,7 +5228,32 @@ impl MessagingUi {
 				if state.selected.is_none() && self.guild.is_none() {
 					self.call_bar(ui, state, &mut commands, None);
 					self.timeline.download.show_status(ui);
-					self.friends_page(ui, state, &mut commands);
+					match self.home_page {
+						HomePage::Friends => self.friends_page(ui, state, &mut commands),
+						HomePage::Favorites => self.favorites_page(ui, state, &mut commands),
+						HomePage::Nitro => self.nitro_home_page(ui, state),
+						HomePage::Quests => self.quests_home_page(ui, state, &mut commands),
+						HomePage::Shop => {
+							let colors = design::palette(ui);
+							ui.add_space((ui.available_height() * 0.28).max(24.0));
+							ui.vertical_centered(|ui| {
+								icons::inline(ui, icons::Icon::ShoppingCart, 28.0, colors.muted);
+								ui.add_space(8.0);
+								ui.label(
+									design::semibold(ui, language.text("home-shop"), 20.0)
+										.color(colors.text_strong),
+								);
+								ui.add_space(6.0);
+								ui.add(
+									egui::Label::new(
+										egui::RichText::new(language.text("home-shop-description"))
+											.color(colors.muted),
+									)
+									.wrap(),
+								);
+							});
+						}
+					}
 					return;
 				}
 				// In a DM call the header moves onto the call stage, shown while hovered.

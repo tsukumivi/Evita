@@ -493,7 +493,7 @@ impl MessagingUi {
 								unread,
 							);
 							if call_guild == Some(id) || self.rail_cache.guild_voice(id) {
-								voice_badge(ui, response.rect, call_guild == Some(id));
+								voice_badge(ui, response.rect);
 							}
 							rail_badge(ui, response.id, response.rect, count, colors.base);
 							self.guild_rail_name(&response, state, guild);
@@ -575,7 +575,7 @@ impl MessagingUi {
 							if !open {
 								let own = call_guild.is_some_and(|g| folder.guild_ids.contains(&g));
 								if own {
-									voice_badge(ui, rect, true);
+									voice_badge(ui, rect);
 								}
 							}
 							rail_badge(

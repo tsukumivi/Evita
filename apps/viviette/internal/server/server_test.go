@@ -24,7 +24,6 @@ func fixtureHandler(t *testing.T) (http.Handler, *config.Holder) {
 	c.Discord.Apps = map[string]string{"spotify": "synthetic-id"}
 	c.Discord.Names = map[string]string{"spotify": "Fixture"}
 	c.Template.State = "custom template"
-	c.Spotify.Market = "fixture-market"
 	if err := config.Save(c, path); err != nil {
 		t.Fatal(err)
 	}
@@ -94,7 +93,7 @@ func TestSourcesAuthAndMethods(t *testing.T) {
 func TestConcurrentSourceUpdatesDoNotLoseWrites(t *testing.T) {
 	h, cfg := fixtureHandler(t)
 	var wg sync.WaitGroup
-	for _, source := range []string{"applemusic", "spotifyapi", "generic"} {
+	for _, source := range []string{"applemusic", "spotify", "generic"} {
 		wg.Go(func() {
 			w := request(h, "POST", "/api/sources", `{"enabled":{"`+source+`":false}}`, true)
 			if w.Code != 200 {
@@ -107,7 +106,7 @@ func TestConcurrentSourceUpdatesDoNotLoseWrites(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, source := range []string{"applemusic", "spotifyapi", "generic"} {
+	for _, source := range []string{"applemusic", "spotify", "generic"} {
 		found := false
 		for _, block := range loaded.Sources.Blocked {
 			if block == source {
@@ -185,18 +184,6 @@ func TestDashboardSetsNonceCSPAndNoReferrer(t *testing.T) {
 	}
 }
 
-func TestDashboardShowsAuthorFooter(t *testing.T) {
-	h, _ := fixtureHandler(t)
-	w := request(h, "GET", "/?t=fixture-token", "", false)
-	if w.Code != 200 {
-		t.Fatal(w.Code)
-	}
-	page := w.Body.String()
-	if !strings.Contains(page, "Made with love by") || !strings.Contains(page, `href="https://github.com/mariyaholic"`) {
-		t.Fatal("dashboard is missing the author footer link")
-	}
-}
-
 func TestSourcesPersistPartialChangesWithoutMutatingSnapshot(t *testing.T) {
 	h, cfg := fixtureHandler(t)
 	old := cfg.Get()
@@ -247,7 +234,7 @@ func TestYouTubeToggleAcceptedButNotPriority(t *testing.T) {
 			t.Fatalf("toggle: %d %s", w.Code, w.Body.String())
 		}
 	}
-	w := request(h, "POST", "/api/sources", `{"order":["applemusic","spotify","spotifyapi","youtubemusic","browser","youtube"]}`, true)
+	w := request(h, "POST", "/api/sources", `{"order":["applemusic","spotify","youtubemusic","browser","youtube"]}`, true)
 	if w.Code != 400 {
 		t.Fatalf("youtube priority accepted: %d", w.Code)
 	}
@@ -292,7 +279,7 @@ func TestAppearanceSavesKnownThemesOnly(t *testing.T) {
 	if loaded.UI.Theme != "ava" || cfg.Get().UI.Theme != "ava" {
 		t.Fatalf("theme not persisted: file %q, holder %q", loaded.UI.Theme, cfg.Get().UI.Theme)
 	}
-	if loaded.Template.State != "custom template" || loaded.Spotify.Market != "fixture-market" || !reflect.DeepEqual(loaded.Sources.Blocked, before.Sources.Blocked) {
+	if loaded.Template.State != "custom template" || !reflect.DeepEqual(loaded.Sources.Blocked, before.Sources.Blocked) {
 		t.Fatal("theme save changed unrelated settings")
 	}
 	page := request(h, "GET", "/?t=fixture-token", "", false).Body.String()

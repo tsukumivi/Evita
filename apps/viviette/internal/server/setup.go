@@ -4,8 +4,6 @@ package server
 
 import (
 	"encoding/json"
-	"errors"
-	"html"
 	"io"
 	"net/http"
 	"regexp"
@@ -15,50 +13,15 @@ import (
 
 	"viviette/internal/config"
 	"viviette/internal/presence"
-	"viviette/internal/spotifyapi"
 )
 
 // Discord application IDs are snowflakes: 17 to 20 digits.
 var discordAppIDPattern = regexp.MustCompile(`^[0-9]{17,20}$`)
 
-const spotifyCallbackPath = "/spotify/callback"
-
-// spotifyState is the Web API connection as the panel sees it on every state tick.
-type spotifyState struct {
-	Available   bool   `json:"available"`
-	Connected   bool   `json:"connected"`
-	Waiting     bool   `json:"waiting"`
-	ClientID    string `json:"client_id,omitempty"`
-	RedirectURI string `json:"redirect_uri,omitempty"`
-	Error       string `json:"error,omitempty"`
-}
-
 type stateResponse struct {
 	presence.Status
-	Spotify spotifyState `json:"spotify"`
 	// Restored is set when startup replaced a broken config with the last-good copy.
 	Restored *config.Restore `json:"config_restored,omitempty"`
-}
-
-func (d Deps) spotifyAvailable() bool {
-	return d.Spotify != nil && d.SpotifyLink != nil && d.RedirectBase != ""
-}
-
-func (d Deps) spotifyState() spotifyState {
-	s := spotifyState{Available: d.spotifyAvailable()}
-	if !s.Available {
-		return s
-	}
-	s.ClientID = d.Cfg.Get().Spotify.ClientID
-	s.RedirectURI = d.RedirectBase + spotifyCallbackPath
-	s.Connected = d.Spotify.Running()
-	link := d.SpotifyLink.Status()
-	s.Waiting = link.Waiting
-	s.Error = link.Error
-	if s.Connected && s.Error == "" {
-		s.Error = d.Spotify.Err()
-	}
-	return s
 }
 
 // decodeStrict reads one small JSON object with no unknown fields and nothing after it.
@@ -77,7 +40,7 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
-// registerSetup adds the first-run checklist, test card and Spotify connect endpoints.
+// registerSetup adds the first-run checklist and test card endpoints.
 func registerSetup(mux *http.ServeMux, d Deps, configMu *sync.Mutex, auth func(http.HandlerFunc) http.HandlerFunc) {
 	defaultAppID := config.Defaults().Discord.ClientID
 	setupBody := func() map[string]any {
@@ -154,103 +117,4 @@ func registerSetup(mux *http.ServeMux, d Deps, configMu *sync.Mutex, auth func(h
 		writeJSON(w, http.StatusAccepted, map[string]any{"state": "sending", "seconds": int(presence.TestCardFor / time.Second)})
 	}))
 
-	mux.HandleFunc("/api/spotify", auth(func(w http.ResponseWriter, r *http.Request) {
-		if !d.spotifyAvailable() {
-			http.Error(w, "spotify connect unavailable", http.StatusNotFound)
-			return
-		}
-		switch r.Method {
-		case http.MethodGet:
-		case http.MethodPost:
-			var payload struct {
-				Action   string `json:"action"`
-				ClientID string `json:"client_id"`
-			}
-			if !decodeStrict(w, r, 256, &payload) {
-				http.Error(w, "invalid spotify payload", 400)
-				return
-			}
-			switch payload.Action {
-			case "connect":
-				id := strings.ToLower(strings.TrimSpace(payload.ClientID))
-				if !spotifyapi.ValidClientID(id) {
-					http.Error(w, "a Spotify client ID is 32 letters and digits (0-9, a-f)", 400)
-					return
-				}
-				authURL, err := d.SpotifyLink.Begin(id, d.RedirectBase+spotifyCallbackPath)
-				if err != nil {
-					http.Error(w, err.Error(), 400)
-					return
-				}
-				if d.OpenURL == nil || d.OpenURL(authURL) != nil {
-					d.SpotifyLink.Cancel()
-					http.Error(w, "could not open the browser", http.StatusBadGateway)
-					return
-				}
-			case "cancel":
-				d.SpotifyLink.Cancel()
-			case "disconnect":
-				d.SpotifyLink.Cancel()
-				d.Spotify.Stop()
-				clearToken := d.ClearSpotifyToken
-				if clearToken == nil {
-					clearToken = spotifyapi.ClearRefreshToken
-				}
-				// A token that was never stored is already gone; the config change still applies.
-				_ = clearToken()
-				if err := update(func(c *config.Config) { c.Spotify.Mode = "system" }); err != nil {
-					http.Error(w, err.Error(), 500)
-					return
-				}
-			default:
-				http.Error(w, "unknown spotify action", 400)
-				return
-			}
-		default:
-			http.Error(w, "method", 405)
-			return
-		}
-		writeJSON(w, 200, d.spotifyState())
-	}))
-
-	// Spotify redirects the system browser here, so this route carries no panel token. The
-	// single-use state from the flow the panel started is what authorizes it.
-	mux.HandleFunc(spotifyCallbackPath, func(w http.ResponseWriter, r *http.Request) {
-		page := func(code int, message string) {
-			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'")
-			w.Header().Set("Referrer-Policy", "no-referrer")
-			w.Header().Set("Cache-Control", "no-store")
-			w.WriteHeader(code)
-			_, _ = io.WriteString(w, `<!doctype html><meta charset="utf-8"><title>Viviette</title><body style="font:15px system-ui,sans-serif;margin:3em auto;max-width:28em;padding:0 1em"><h1 style="font-size:20px">Viviette</h1><p>`+html.EscapeString(message)+`</p></body>`)
-		}
-		if r.Method != http.MethodGet {
-			http.Error(w, "method", 405)
-			return
-		}
-		if !d.spotifyAvailable() {
-			http.NotFound(w, r)
-			return
-		}
-		q := r.URL.Query()
-		clientID, err := d.SpotifyLink.Complete(q.Get("state"), q.Get("code"), q.Get("error"))
-		switch {
-		case errors.Is(err, spotifyapi.ErrStateMismatch), errors.Is(err, spotifyapi.ErrNoPendingFlow):
-			page(http.StatusBadRequest, "This sign-in link is not valid any more. Start again from Viviette.")
-			return
-		case err != nil:
-			page(http.StatusBadGateway, "Spotify was not connected. Return to Viviette to try again.")
-			return
-		}
-		if err := update(func(c *config.Config) {
-			c.Spotify.Mode = "api"
-			c.Spotify.ClientID = clientID
-		}); err != nil {
-			page(http.StatusInternalServerError, "Spotify signed in, but Viviette could not save the setting. Return to Viviette to try again.")
-			return
-		}
-		cfg := d.Cfg.Get()
-		d.Spotify.Start(clientID, cfg.Spotify.Market, time.Duration(cfg.Spotify.PollSecs)*time.Second)
-		page(http.StatusOK, "Spotify is connected. You can close this tab.")
-	})
 }
