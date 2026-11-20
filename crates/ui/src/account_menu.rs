@@ -1439,6 +1439,20 @@ mod tests {
 				state.own_profile.data = Some(profiles::synthetic(&own, None));
 				let mut view = MessagingUi::default();
 				frame(&ctx, &mut view, &mut state, size, vec![]);
+                frame(
+                    &ctx,
+                    &mut view,
+                    &mut state,
+                    size,
+                    vec![
+                        Event::PointerMoved(Pos2::new(170.0, 260.0)),
+                        Event::MouseWheel {
+                            unit: egui::MouseWheelUnit::Point,
+                            delta: vec2(0.0, -120.0),
+                            modifiers: egui::Modifiers::NONE,
+                        },
+                    ],
+                );
 				let text = frame(&ctx, &mut view, &mut state, size, vec![]);
 				if light {
 					for key in [egui::Key::Tab, egui::Key::Enter] {

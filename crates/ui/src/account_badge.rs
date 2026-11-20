@@ -3,6 +3,7 @@ use crate::{design, icons};
 use egui::{Color32, Response, Sense, Ui, vec2};
 use model::User;
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn name(
 	ui: &mut Ui,
 	user: &User,
@@ -19,6 +20,7 @@ pub(super) fn name(
 	)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn server_member_name(
 	ui: &mut Ui,
 	user: &User,
