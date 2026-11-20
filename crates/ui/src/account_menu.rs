@@ -1462,7 +1462,7 @@ mod tests {
 					&mut state,
 					size,
 					vec![
-						Event::PointerMoved(Pos2::new(170.0, 260.0)),
+						Event::PointerMoved(Pos2::new(170.0, 360.0)),
 						Event::MouseWheel {
 							unit: egui::MouseWheelUnit::Point,
 							delta: vec2(0.0, -200.0),
