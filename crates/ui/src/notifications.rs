@@ -374,7 +374,7 @@ impl MessagingUi {
 				});
 				design::rail_name(
 					&favorites_response,
-					&crate::i18n::translate("favorites-title"),
+					crate::i18n::translate("favorites-title"),
 				);
 				if favorites_response.clicked() && !favorites_selected {
 					self.home_page = super::HomePage::Favorites;
