@@ -1347,7 +1347,7 @@ mod tests {
 					Event::PointerMoved(Pos2::new(170.0, 260.0)),
 					Event::MouseWheel {
 						unit: egui::MouseWheelUnit::Point,
-						delta: vec2(0.0, -240.0),
+						delta: vec2(0.0, -360.0),
 						modifiers: egui::Modifiers::NONE,
 						phase: egui::TouchPhase::Move,
 						source: egui::MouseWheelSource::Unknown,
@@ -1465,7 +1465,7 @@ mod tests {
 						Event::PointerMoved(Pos2::new(170.0, 260.0)),
 						Event::MouseWheel {
 							unit: egui::MouseWheelUnit::Point,
-							delta: vec2(0.0, -120.0),
+							delta: vec2(0.0, -200.0),
 							modifiers: egui::Modifiers::NONE,
 							phase: egui::TouchPhase::Move,
 							source: egui::MouseWheelSource::Unknown,
